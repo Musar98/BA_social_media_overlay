@@ -37,6 +37,19 @@ class MainActivity : ComponentActivity() {
 // All manipulation happens inside the webpage.
 // The WebView is just a container.
 // We inject js/css in func below!
+// clear up if this is sufficient or we want to evaluate more options
+// for example:
+// Native Android Video Processing (Much Stronger)
+// Instead of:
+// WebView → JavaScript → Canvas
+// Try:
+// Capture video using MediaCodec / ExoPlayer
+// Process frames in Kotlin
+// Apply Sobel / other filterin natively
+// Render overlay
+// that would bypass CORS (ig)
+// but changes Architecture
+// might be Technically more powerful (almost surely since allows full kt interactivity)
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
