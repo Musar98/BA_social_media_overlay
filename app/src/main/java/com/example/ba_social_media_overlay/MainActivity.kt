@@ -92,23 +92,59 @@ fun InstagramWebView() {
     )
 }
 
-//TODO update, this tries to draw red border around vids
+//TODO
+// Canvas video processing is BLOCKED by CORS (by instagram itself) in Android WebView
+// so something like the sobel filter (accessing pixels does not work)
+// DOMException → Canvas has been tainted by cross-origin data
 private fun injectTestJavaScript(webView: WebView) {
 
     val js = """
         (function() {
-            console.log("POC Injection Active");
 
-            const videos = document.querySelectorAll("video");
-            videos.forEach((video) => {
-                video.style.border = "5px solid red";
+            console.log("CSS Filter Injection Active (Images + Videos)");
+
+            function applyFilter(element) {
+                if (element.dataset.filtered) return;
+                element.dataset.filtered = "true";
+                
+                // TODO Thin red border to pw => somehow gets overridenn to black border myb bc of filter ?
+                //element.style.outline = "2px solid red";
+                //element.style.outlineOffset = "-2px";
+
+                // Applied CSS Filter => WORKS since not accessing pixels crs
+                element.style.filter = "grayscale(100%) contrast(200%) brightness(110%)";
+                element.style.transition = "filter 0.3s ease";
+
+                
+            }
+
+            function processNode(node) {
+
+                if (node.tagName === "VIDEO" || node.tagName === "IMG") {
+                    applyFilter(node);
+                }
+
+                if (node.querySelectorAll) {
+                    node.querySelectorAll("video, img").forEach(applyFilter);
+                }
+            }
+
+            document.querySelectorAll("video, img").forEach(applyFilter);
+
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach(processNode);
+                });
             });
 
-            return "Injected " + videos.length + " videos";
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+
+            return "CSS Filter Applied to Media";
         })();
     """.trimIndent()
 
-    webView.evaluateJavascript(js) { result ->
-        println("JS Result: $result")
-    }
+    webView.evaluateJavascript(js, null)
 }
