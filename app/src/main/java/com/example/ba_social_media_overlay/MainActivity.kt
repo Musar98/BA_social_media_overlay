@@ -1,123 +1,98 @@
 package com.example.ba_social_media_overlay
 
-import android.annotation.SuppressLint
+import android.opengl.GLSurfaceView
 import android.os.Bundle
-import android.view.MotionEvent
-import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.view.Surface
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.ba_social_media_overlay.ui.theme.BA_social_media_overlayTheme
 
 class MainActivity : ComponentActivity() {
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private lateinit var player: ExoPlayer
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+
+        player = ExoPlayer.Builder(this).build()
+
+        //TODO this loads media, currently free google api media
+        val mediaItem = MediaItem.fromUri(
+            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+        )
+
+        player.setMediaItem(mediaItem)
+        player.prepare()
+        player.play()
+
         setContent {
             BA_social_media_overlayTheme {
-                InstagramWebView()
+                GPUVideoScreen(player)
             }
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        player.release()
+    }
 }
 
-//TODO rethink, with this option:
-// Android does NOT process the video frames.
-// Android does NOT draw overlays.
-// All manipulation happens inside the webpage.
-// The WebView is just a container.
-// We inject js/css in func below!
-// clear up if this is sufficient or we want to evaluate more options
-// for example:
-// Native Android Video Processing (Much Stronger)
-// Instead of:
-// WebView → JavaScript → Canvas
-// Try:
-// Capture video using MediaCodec / ExoPlayer
-// Process frames in Kotlin
-// Apply Sobel / other filterin natively
-// Render overlay
-// that would bypass CORS (ig)
-// but changes Architecture
-// might be Technically more powerful (almost surely since allows full kt interactivity)
-
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun InstagramWebView() {
+fun GPUVideoScreen(player: ExoPlayer) {
 
-    AndroidView(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding(),
-        factory = { context ->
-            WebView(context).apply {
+    var filterEnabled by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(true) }
+    val renderer = remember { SimpleVideoRenderer() }
 
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
+    Box(modifier = Modifier.fillMaxSize()) {
 
-                isFocusable = true
-                isFocusableInTouchMode = true
-                requestFocus()
+        AndroidView(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable {
+                    if (isPlaying) player.pause() else player.play()
+                    isPlaying = !isPlaying
+                },
+            factory = { context ->
 
-                setOnTouchListener { v, event ->
-                    if (event.action == MotionEvent.ACTION_DOWN ||
-                        event.action == MotionEvent.ACTION_UP
-                    ) {
-                        v.performClick()
-                    }
-                    false
-                }
+                val glSurfaceView = GLSurfaceView(context)
+                glSurfaceView.setEGLContextClientVersion(2)
 
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.mediaPlaybackRequiresUserGesture = false
-                settings.loadsImagesAutomatically = true
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-
-                webChromeClient = WebChromeClient()
-
-                webViewClient = object : WebViewClient() {
-
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-
-                        postDelayed({
-                            injectTestJavaScript(this@apply)
-                        }, 2000)
+                renderer.onSurfaceReady = { surface: Surface ->
+                    (context as ComponentActivity).runOnUiThread {
+                        player.setVideoSurface(surface)
                     }
                 }
 
-                loadUrl("https://www.instagram.com")
+                glSurfaceView.setRenderer(renderer)
+                glSurfaceView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+
+                glSurfaceView
+            },
+            update = {
+                renderer.setFilterEnabled(filterEnabled)
             }
+        )
+
+        Button(
+            onClick = { filterEnabled = !filterEnabled },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(24.dp)
+        ) {
+            Text(if (filterEnabled) "Disable Filter" else "Enable Filter")
         }
-    )
-}
-
-//TODO
-// Canvas video processing is BLOCKED by CORS (by instagram itself) in Android WebView
-// so something like the sobel filter (accessing pixels does not work)
-// DOMException → Canvas has been tainted by cross-origin data
-private fun injectTestJavaScript(
-    webView: WebView,
-    filterCss: String = "grayscale(100%) contrast(200%) brightness(110%)"
-) {
-
-    val context = webView.context
-    val js = context.assets.open("instagramFilter.js").bufferedReader().use { it.readText() }
-    val finalJs = "window.dynamicFilterCss = \"${filterCss.replace("\"", "\\\"")}\";\n$js"
-
-    webView.evaluateJavascript(finalJs, null)
+    }
 }
