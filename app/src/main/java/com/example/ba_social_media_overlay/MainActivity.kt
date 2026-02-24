@@ -6,17 +6,27 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import androidx.annotation.RequiresApi
+import androidx.core.content.edit
 
 class MainActivity : Activity() {
 
     private val REQUEST_CODE_SCREEN_CAPTURE = 1001
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Request MediaProjection permission
-        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        startActivityForResult(mgr.createScreenCaptureIntent(), REQUEST_CODE_SCREEN_CAPTURE)
+        val prefs = getSharedPreferences("overlay_prefs", MODE_PRIVATE)
+        val alreadyGranted = prefs.getBoolean("media_projection_granted", false)
+
+        if (!alreadyGranted) {
+            val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            startActivityForResult(mgr.createScreenCaptureIntent(), REQUEST_CODE_SCREEN_CAPTURE)
+        } else {
+            val serviceIntent = Intent(this, ScreenCaptureService::class.java)
+            startForegroundService(serviceIntent)
+            finish()
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -24,13 +34,15 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
 
         if (requestCode == REQUEST_CODE_SCREEN_CAPTURE && resultCode == RESULT_OK && data != null) {
+            val prefs = getSharedPreferences("overlay_prefs", MODE_PRIVATE)
+            prefs.edit { putBoolean("media_projection_granted", true) }
+
             val serviceIntent = Intent(this, ScreenCaptureService::class.java)
             serviceIntent.putExtra("resultCode", resultCode)
             serviceIntent.putExtra("data", data)
             startForegroundService(serviceIntent)
         }
 
-        // Close MainActivity immediately so user sees apps underneath
-        finish()
+        finish() // close MainActivity
     }
 }

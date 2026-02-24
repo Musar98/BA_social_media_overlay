@@ -5,7 +5,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -24,6 +23,7 @@ class ScreenCaptureService : Service() {
     private var overlayView: View? = null
     private var mediaProjection: MediaProjection? = null
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
         // 1️⃣ Start foreground to allow MediaProjection
@@ -51,7 +51,7 @@ class ScreenCaptureService : Service() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val chan = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(chan)
         }
 
@@ -65,8 +65,12 @@ class ScreenCaptureService : Service() {
         startForeground(1, notification)
     }
 
+    private var overlayAdded = false
+
     @RequiresApi(Build.VERSION_CODES.O)
     private fun addOverlay() {
+        if (overlayAdded) return // avoid adding multiple overlays
+
         overlayView = View(this).apply {
             setBackgroundColor(Color.argb(80, 255, 50, 50)) // red tint
         }
@@ -75,7 +79,7 @@ class ScreenCaptureService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or    // <-- pass touches through
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
@@ -83,6 +87,7 @@ class ScreenCaptureService : Service() {
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         windowManager.addView(overlayView, params)
+        overlayAdded = true
     }
 
     override fun onDestroy() {
