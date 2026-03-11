@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -22,7 +23,14 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         enableEdgeToEdge()
+
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        )
+
         setContent {
             BA_social_media_overlayTheme {
                 InstagramWebView()
@@ -30,26 +38,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-//TODO rethink, with this option:
-// Android does NOT process the video frames.
-// Android does NOT draw overlays.
-// All manipulation happens inside the webpage.
-// The WebView is just a container.
-// We inject js/css in func below!
-// clear up if this is sufficient or we want to evaluate more options
-// for example:
-// Native Android Video Processing (Much Stronger)
-// Instead of:
-// WebView → JavaScript → Canvas
-// Try:
-// Capture video using MediaCodec / ExoPlayer
-// Process frames in Kotlin
-// Apply Sobel / other filterin natively
-// Render overlay
-// that would bypass CORS (ig)
-// but changes Architecture
-// might be Technically more powerful (almost surely since allows full kt interactivity)
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -59,7 +47,9 @@ fun InstagramWebView() {
         modifier = Modifier
             .fillMaxSize()
             .systemBarsPadding(),
+
         factory = { context ->
+
             WebView(context).apply {
 
                 layoutParams = ViewGroup.LayoutParams(
@@ -80,12 +70,15 @@ fun InstagramWebView() {
                     false
                 }
 
+                // WebView Settings
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                settings.mediaPlaybackRequiresUserGesture = false
                 settings.loadsImagesAutomatically = true
+                settings.mediaPlaybackRequiresUserGesture = false
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
+                settings.allowFileAccess = true
+                settings.allowContentAccess = true
 
                 webChromeClient = WebChromeClient()
 
@@ -95,8 +88,8 @@ fun InstagramWebView() {
                         super.onPageFinished(view, url)
 
                         postDelayed({
-                            injectTestJavaScript(this@apply)
-                        }, 2000)
+                            injectSobelJavaScript(this@apply)
+                        }, 1500)
                     }
                 }
 
@@ -106,18 +99,13 @@ fun InstagramWebView() {
     )
 }
 
-//TODO
-// Canvas video processing is BLOCKED by CORS (by instagram itself) in Android WebView
-// so something like the sobel filter (accessing pixels does not work)
-// DOMException → Canvas has been tainted by cross-origin data
-private fun injectTestJavaScript(
-    webView: WebView,
-    filterCss: String = "grayscale(100%) contrast(200%) brightness(110%)"
-) {
+private fun injectSobelJavaScript(webView: WebView) {
 
     val context = webView.context
-    val js = context.assets.open("instagramFilter.js").bufferedReader().use { it.readText() }
-    val finalJs = "window.dynamicFilterCss = \"${filterCss.replace("\"", "\\\"")}\";\n$js"
 
-    webView.evaluateJavascript(finalJs, null)
+    val js = context.assets.open("instagramFilter.js")
+        .bufferedReader()
+        .use { it.readText() }
+
+    webView.evaluateJavascript(js, null)
 }
