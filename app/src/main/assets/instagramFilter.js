@@ -5,15 +5,17 @@ console.log("IG Sobel Filter Injection Started");
 const MAX_HEIGHT = 720;
 
 function modifyVideo(video) {
+
     if (video.dataset.sobelAttached) {
-    return;
+        return;
     }
 
     video.crossOrigin = "anonymous";
-
     video.dataset.sobelAttached = "true";
+
     const parent = video.parentElement;
     const canvas = document.createElement("canvas");
+
     parent.insertBefore(canvas, video);
 
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -63,9 +65,7 @@ function modifyVideo(video) {
 
 function processNode(node) {
 
-    if (!(node instanceof Element)) {
-    return;
-    }
+    if (!(node instanceof Element)) return;
 
     if (node.tagName === "VIDEO") {
         modifyVideo(node);
@@ -90,13 +90,14 @@ observer.observe(document.body, {
 });
 
 ////////////////////////////////////////////////////////////
-// SOBEL IMPLEMENTATION
+// SOBEL FILTER (IDENTICAL TO REFERENCE IMPLEMENTATION)
 ////////////////////////////////////////////////////////////
 
+// Buffer cache to avoid allocations
 let bufferCache = null;
 
-const kernel1 = new Float32Array([-1,0,1]);
-const kernel2 = new Float32Array([1,2,1]);
+const kernel1 = new Float32Array([-1, 0, 1]);
+const kernel2 = new Float32Array([1, 2, 1]);
 
 function gradientImg(imageData) {
 
@@ -120,13 +121,44 @@ function gradientImg(imageData) {
 
     toGrayscale(imageData, bufferCache.grayscale);
 
-    applyHorizontalFilter(bufferCache.grayscale, kernel1, width, height, bufferCache.dx);
-    applyVerticalFilter(bufferCache.dx, kernel2, width, height, bufferCache.dxx);
+    applyHorizontalFilter(
+        bufferCache.grayscale,
+        kernel1,
+        width,
+        height,
+        bufferCache.dx
+    );
 
-    applyVerticalFilter(bufferCache.grayscale, kernel1, width, height, bufferCache.dy);
-    applyHorizontalFilter(bufferCache.dy, kernel2, width, height, bufferCache.dyy);
+    applyVerticalFilter(
+        bufferCache.dx,
+        kernel2,
+        width,
+        height,
+        bufferCache.dxx
+    );
 
-    magnitude(bufferCache.dxx, bufferCache.dyy, 8, bufferCache.mag);
+    applyVerticalFilter(
+        bufferCache.grayscale,
+        kernel1,
+        width,
+        height,
+        bufferCache.dy
+    );
+
+    applyHorizontalFilter(
+        bufferCache.dy,
+        kernel2,
+        width,
+        height,
+        bufferCache.dyy
+    );
+
+    magnitude(
+        bufferCache.dxx,
+        bufferCache.dyy,
+        10,
+        bufferCache.mag
+    );
 
     return fromGrayscale(bufferCache.mag, imageData);
 }
@@ -150,92 +182,94 @@ function toGrayscale(imageData, result) {
 
 }
 
-function fromGrayscale(gray, imageData) {
+function fromGrayscale(grayscale, imageData) {
 
     const width = imageData.width;
     const height = imageData.height;
+    const data = imageData.data;
 
     const output = new ImageData(width, height);
+    const outputData = output.data;
 
-    const out = output.data;
+    let dataIdx = 0;
 
-    let idx = 0;
+    for (let i = 0; i < grayscale.length; i++) {
 
-    for (let i = 0; i < gray.length; i++) {
+        const val = Math.min(Math.max(grayscale[i], 0), 255);
 
-        const val = Math.min(Math.max(gray[i],0),255);
+        outputData[dataIdx++] = val;
+        outputData[dataIdx++] = val;
+        outputData[dataIdx++] = val;
 
-        out[idx++] = val;
-        out[idx++] = val;
-        out[idx++] = val;
-        out[idx++] = 255;
-
+        // Copy original alpha channel
+        outputData[dataIdx] = data[dataIdx];
+        dataIdx++;
     }
 
     return output;
-
 }
 
 function applyHorizontalFilter(data, kernel, width, height, result) {
 
-    const kSize = kernel.length;
-    const kCenter = Math.floor(kSize/2);
+    const kernelSize = kernel.length;
+    const kernelCenter = Math.floor(kernelSize / 2);
 
-    for (let y=0;y<height;y++) {
+    result.fill(0);
 
-        for (let x=kCenter;x<width-kCenter;x++) {
+    for (let y = 0; y < height; y++) {
 
-            let val=0;
+        for (let x = kernelCenter; x < width - kernelCenter; x++) {
 
-            for (let k=0;k<kSize;k++) {
+            let val = 0;
 
-                const srcX = x + k - kCenter;
+            for (let kx = 0; kx < kernelSize; kx++) {
 
-                val += data[y*width + srcX] * kernel[k];
+                const srcX = x + kx - kernelCenter;
+                const srcIndex = y * width + srcX;
 
+                val += data[srcIndex] * kernel[kx];
             }
 
-            result[y*width + x] = val;
-
+            result[y * width + x] = val;
         }
-
     }
-
 }
 
 function applyVerticalFilter(data, kernel, width, height, result) {
 
-    const kSize = kernel.length;
-    const kCenter = Math.floor(kSize/2);
+    const kernelSize = kernel.length;
+    const kernelCenter = Math.floor(kernelSize / 2);
 
-    for (let y=kCenter;y<height-kCenter;y++) {
+    result.fill(0);
 
-        for (let x=0;x<width;x++) {
+    for (let y = kernelCenter; y < height - kernelCenter; y++) {
 
-            let val=0;
+        for (let x = 0; x < width; x++) {
 
-            for (let k=0;k<kSize;k++) {
+            let val = 0;
 
-                const srcY = y + k - kCenter;
+            for (let ky = 0; ky < kernelSize; ky++) {
 
-                val += data[srcY*width + x] * kernel[k];
+                const srcY = y + ky - kernelCenter;
+                const srcIndex = srcY * width + x;
 
+                val += data[srcIndex] * kernel[ky];
             }
 
-            result[y*width + x] = val;
-
+            result[y * width + x] = val;
         }
+    }
+}
+
+function magnitude(x, y, scale, result) {
+
+    for (let i = 0; i < x.length; i++) {
+
+        result[i] =
+            scale * Math.sqrt(x[i] * x[i] + y[i] * y[i]);
 
     }
 
 }
 
-function magnitude(x,y,scale,result) {
-
-    for (let i=0;i<x.length;i++) {
-
-        result[i] = scale*Math.sqrt(x[i]*x[i]+y[i]*y[i]);
-
-    }
-}
 })();
