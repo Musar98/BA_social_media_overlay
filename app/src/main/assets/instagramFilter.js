@@ -1,275 +1,223 @@
 (function () {
 
-console.log("IG Sobel Filter Injection Started");
-
-const MAX_HEIGHT = 720;
+console.log("IG GPU Sobel Filter Injection Started");
 
 function modifyVideo(video) {
 
-    if (video.dataset.sobelAttached) {
+   if (video.dataset.sobelAttached === video.src) return;
+   video.dataset.sobelAttached = video.src;
+
+    const parent = video.parentElement;
+
+    const canvas = document.createElement("canvas");
+    parent.insertBefore(canvas, video);
+
+    const gl = canvas.getContext("webgl", { premultipliedAlpha: false });
+
+    if (!gl) {
+        console.error("WebGL not supported");
         return;
     }
 
     video.crossOrigin = "anonymous";
-    video.dataset.sobelAttached = "true";
-
-    const parent = video.parentElement;
-    const canvas = document.createElement("canvas");
-
-    parent.insertBefore(canvas, video);
-
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
     video.addEventListener("loadedmetadata", () => {
 
-        let width = video.videoWidth;
-        let height = video.videoHeight;
-
-        if (height > MAX_HEIGHT) {
-            const aspect = width / height;
-            height = MAX_HEIGHT;
-            width = Math.round(height * aspect);
-        }
-
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
 
         canvas.style.width = video.clientWidth + "px";
         canvas.style.height = video.clientHeight + "px";
 
         video.style.display = "none";
 
-        processFrame();
+        initGL(gl, video, canvas);
     });
+}
 
-    function processFrame() {
+////////////////////////////////////////////////////////////
+// WEBGL INITIALIZATION
+////////////////////////////////////////////////////////////
+
+function initGL(gl, video, canvas) {
+
+    const vertexSrc = `
+    attribute vec2 position;
+    varying vec2 vTex;
+
+    void main() {
+        vTex = (position + 1.0) * 0.5;
+        gl_Position = vec4(position,0.0,1.0);
+    }
+    `;
+
+    const fragmentSrc = `
+    precision mediump float;
+
+    varying vec2 vTex;
+
+    uniform sampler2D tex;
+    uniform vec2 texel;
+
+    void main() {
+
+        float tl = texture2D(tex, vTex + texel * vec2(-1.0,-1.0)).r;
+        float tc = texture2D(tex, vTex + texel * vec2( 0.0,-1.0)).r;
+        float tr = texture2D(tex, vTex + texel * vec2( 1.0,-1.0)).r;
+
+        float ml = texture2D(tex, vTex + texel * vec2(-1.0, 0.0)).r;
+        float mr = texture2D(tex, vTex + texel * vec2( 1.0, 0.0)).r;
+
+        float bl = texture2D(tex, vTex + texel * vec2(-1.0, 1.0)).r;
+        float bc = texture2D(tex, vTex + texel * vec2( 0.0, 1.0)).r;
+        float br = texture2D(tex, vTex + texel * vec2( 1.0, 1.0)).r;
+
+        float gx =
+            -1.0 * tl + 1.0 * tr +
+            -2.0 * ml + 2.0 * mr +
+            -1.0 * bl + 1.0 * br;
+
+        float gy =
+             1.0 * tl + 2.0 * tc + 1.0 * tr +
+            -1.0 * bl -2.0 * bc -1.0 * br;
+
+        float g = length(vec2(gx,gy));
+
+        gl_FragColor = vec4(vec3(g),1.0);
+    }
+    `;
+
+    const program = createProgram(gl, vertexSrc, fragmentSrc);
+
+    const position = gl.getAttribLocation(program, "position");
+    const texelLoc = gl.getUniformLocation(program, "texel");
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([
+            -1,-1,
+             1,-1,
+            -1, 1,
+             1, 1
+        ]),
+        gl.STATIC_DRAW
+    );
+
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    // Flip video texture vertically (fix upside-down issue)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+    function render() {
 
         if (video.paused || video.ended) {
-            requestAnimationFrame(processFrame);
+            requestAnimationFrame(render);
             return;
         }
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
 
-        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            video
+        );
 
-        const filtered = gradientImg(frame);
+        gl.viewport(0,0,canvas.width,canvas.height);
 
-        ctx.putImageData(filtered, 0, 0);
+        gl.useProgram(program);
 
-        requestAnimationFrame(processFrame);
+        gl.uniform2f(
+            texelLoc,
+            1.0 / canvas.width,
+            1.0 / canvas.height
+        );
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+        gl.enableVertexAttribArray(position);
+        gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
+
+        gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+        requestAnimationFrame(render);
     }
 
-    video.addEventListener("play", processFrame);
+    render();
 }
 
-function processNode(node) {
+////////////////////////////////////////////////////////////
+// SHADER HELPERS
+////////////////////////////////////////////////////////////
 
-    if (!(node instanceof Element)) return;
+function createShader(gl,type,src){
 
-    if (node.tagName === "VIDEO") {
-        modifyVideo(node);
+    const shader = gl.createShader(type);
+
+    gl.shaderSource(shader,src);
+    gl.compileShader(shader);
+
+    if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+        console.error(gl.getShaderInfoLog(shader));
     }
+
+    return shader;
+}
+
+function createProgram(gl,vsrc,fsrc){
+
+    const program = gl.createProgram();
+
+    const v = createShader(gl,gl.VERTEX_SHADER,vsrc);
+    const f = createShader(gl,gl.FRAGMENT_SHADER,fsrc);
+
+    gl.attachShader(program,v);
+    gl.attachShader(program,f);
+
+    gl.linkProgram(program);
+
+    if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+        console.error(gl.getProgramInfoLog(program));
+    }
+
+    return program;
+}
+
+////////////////////////////////////////////////////////////
+// VIDEO DETECTION (INSTAGRAM FEED + REELS)
+////////////////////////////////////////////////////////////
+
+function processNode(node){
+
+    if(!(node instanceof Element)) return;
+
+    if(node.tagName==="VIDEO") modifyVideo(node);
 
     node.querySelectorAll("video").forEach(modifyVideo);
 }
 
 document.querySelectorAll("video").forEach(modifyVideo);
 
-const observer = new MutationObserver((mutations) => {
-
-    mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach(processNode);
+const observer = new MutationObserver(mutations=>{
+    mutations.forEach(m=>{
+        m.addedNodes.forEach(processNode);
     });
-
 });
 
-observer.observe(document.body, {
-    childList: true,
-    subtree: true
+observer.observe(document.body,{
+    childList:true,
+    subtree:true
 });
-
-////////////////////////////////////////////////////////////
-// SOBEL FILTER (IDENTICAL TO REFERENCE IMPLEMENTATION)
-////////////////////////////////////////////////////////////
-
-// Buffer cache to avoid allocations
-let bufferCache = null;
-
-const kernel1 = new Float32Array([-1, 0, 1]);
-const kernel2 = new Float32Array([1, 2, 1]);
-
-function gradientImg(imageData) {
-
-    const width = imageData.width;
-    const height = imageData.height;
-    const size = width * height;
-
-    if (!bufferCache || bufferCache.size !== size) {
-
-        bufferCache = {
-            grayscale: new Float32Array(size),
-            dx: new Float32Array(size),
-            dxx: new Float32Array(size),
-            dy: new Float32Array(size),
-            dyy: new Float32Array(size),
-            mag: new Float32Array(size),
-            size
-        };
-
-    }
-
-    toGrayscale(imageData, bufferCache.grayscale);
-
-    applyHorizontalFilter(
-        bufferCache.grayscale,
-        kernel1,
-        width,
-        height,
-        bufferCache.dx
-    );
-
-    applyVerticalFilter(
-        bufferCache.dx,
-        kernel2,
-        width,
-        height,
-        bufferCache.dxx
-    );
-
-    applyVerticalFilter(
-        bufferCache.grayscale,
-        kernel1,
-        width,
-        height,
-        bufferCache.dy
-    );
-
-    applyHorizontalFilter(
-        bufferCache.dy,
-        kernel2,
-        width,
-        height,
-        bufferCache.dyy
-    );
-
-    magnitude(
-        bufferCache.dxx,
-        bufferCache.dyy,
-        10,
-        bufferCache.mag
-    );
-
-    return fromGrayscale(bufferCache.mag, imageData);
-}
-
-function toGrayscale(imageData, result) {
-
-    const data = imageData.data;
-
-    let dataIdx = 0;
-
-    for (let i = 0; i < result.length; i++) {
-
-        result[i] =
-            (data[dataIdx++] +
-             data[dataIdx++] +
-             data[dataIdx++]) / 3;
-
-        dataIdx++;
-
-    }
-
-}
-
-function fromGrayscale(grayscale, imageData) {
-
-    const width = imageData.width;
-    const height = imageData.height;
-    const data = imageData.data;
-
-    const output = new ImageData(width, height);
-    const outputData = output.data;
-
-    let dataIdx = 0;
-
-    for (let i = 0; i < grayscale.length; i++) {
-
-        const val = Math.min(Math.max(grayscale[i], 0), 255);
-
-        outputData[dataIdx++] = val;
-        outputData[dataIdx++] = val;
-        outputData[dataIdx++] = val;
-
-        // Copy original alpha channel
-        outputData[dataIdx] = data[dataIdx];
-        dataIdx++;
-    }
-
-    return output;
-}
-
-function applyHorizontalFilter(data, kernel, width, height, result) {
-
-    const kernelSize = kernel.length;
-    const kernelCenter = Math.floor(kernelSize / 2);
-
-    result.fill(0);
-
-    for (let y = 0; y < height; y++) {
-
-        for (let x = kernelCenter; x < width - kernelCenter; x++) {
-
-            let val = 0;
-
-            for (let kx = 0; kx < kernelSize; kx++) {
-
-                const srcX = x + kx - kernelCenter;
-                const srcIndex = y * width + srcX;
-
-                val += data[srcIndex] * kernel[kx];
-            }
-
-            result[y * width + x] = val;
-        }
-    }
-}
-
-function applyVerticalFilter(data, kernel, width, height, result) {
-
-    const kernelSize = kernel.length;
-    const kernelCenter = Math.floor(kernelSize / 2);
-
-    result.fill(0);
-
-    for (let y = kernelCenter; y < height - kernelCenter; y++) {
-
-        for (let x = 0; x < width; x++) {
-
-            let val = 0;
-
-            for (let ky = 0; ky < kernelSize; ky++) {
-
-                const srcY = y + ky - kernelCenter;
-                const srcIndex = srcY * width + x;
-
-                val += data[srcIndex] * kernel[ky];
-            }
-
-            result[y * width + x] = val;
-        }
-    }
-}
-
-function magnitude(x, y, scale, result) {
-
-    for (let i = 0; i < x.length; i++) {
-
-        result[i] =
-            scale * Math.sqrt(x[i] * x[i] + y[i] * y[i]);
-
-    }
-
-}
 
 })();

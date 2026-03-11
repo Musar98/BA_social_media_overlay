@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -30,6 +31,9 @@ class MainActivity : ComponentActivity() {
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         )
+
+        // Useful for debugging WebView in Chrome
+        WebView.setWebContentsDebuggingEnabled(true)
 
         setContent {
             BA_social_media_overlayTheme {
@@ -57,6 +61,9 @@ fun InstagramWebView() {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
+                // Ensure GPU rendering
+                setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
+
                 isFocusable = true
                 isFocusableInTouchMode = true
                 requestFocus()
@@ -80,6 +87,13 @@ fun InstagramWebView() {
                 settings.allowFileAccess = true
                 settings.allowContentAccess = true
 
+                // Important for Instagram CDN media
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+
+                settings.setSupportZoom(false)
+                settings.displayZoomControls = false
+                settings.builtInZoomControls = false
+
                 webChromeClient = WebChromeClient()
 
                 webViewClient = object : WebViewClient() {
@@ -87,9 +101,7 @@ fun InstagramWebView() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
 
-                        postDelayed({
-                            injectSobelJavaScript(this@apply)
-                        }, 1500)
+                        injectSobelJavaScript(this@apply)
                     }
                 }
 
