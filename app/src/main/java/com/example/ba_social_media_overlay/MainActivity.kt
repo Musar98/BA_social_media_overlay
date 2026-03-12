@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -22,11 +23,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // Force hardware acceleration for WebGL performance
+
         window.setFlags(
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         )
+
+        WebView.setWebContentsDebuggingEnabled(true)
+
         setContent {
             BA_social_media_overlayTheme {
                 InstagramWebView()
@@ -47,14 +51,19 @@ fun InstagramWebView() {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
+                    databaseEnabled = true
                     mediaPlaybackRequiresUserGesture = false
                     mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                    // Standard mobile optimizations
                     useWideViewPort = true
                     loadWithOverviewMode = true
+                    userAgentString =
+                        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
                 }
 
                 webChromeClient = WebChromeClient()
@@ -63,7 +72,13 @@ fun InstagramWebView() {
                         super.onPageFinished(view, url)
                         injectSobelJavaScript(this@apply)
                     }
+
+                    override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                        super.doUpdateVisitedHistory(view, url, isReload)
+                        injectSobelJavaScript(this@apply)
+                    }
                 }
+
                 loadUrl("https://www.instagram.com")
             }
         }
@@ -79,3 +94,7 @@ private fun injectSobelJavaScript(webView: WebView) {
         e.printStackTrace()
     }
 }
+
+// Optional Kotlin helpers to toggle the filter programmatically
+fun WebView.enableSobel() = this.evaluateJavascript("window.enableSobelFilter();", null)
+fun WebView.disableSobel() = this.evaluateJavascript("window.disableSobelFilter();", null)
