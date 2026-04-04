@@ -1,0 +1,23 @@
+{
+  "name": "ai-overlay-engine",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.ts",
+  "private": true,
+  "scripts": {
+    "build": "npx vite build",
+    "test": "vitest"
+  },
+  "keywords": [],
+  "author": "Musa Rochi",
+  "license": "ISC",
+  "dependencies": {
+    "vite": "^8.0.3"
+  },
+  "devDependencies": {
+    "onnxruntime-web": "^1.24.3",
+    "prettier": "^3.8.1",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  }
+}
