@@ -104,7 +104,7 @@ fun InstagramWebView() {
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        injectFilter(this@apply)
+                        injectAiOverlayEngine(this@apply)
                     }
                 }
 
@@ -114,7 +114,7 @@ fun InstagramWebView() {
     )
 }
 
-private fun injectFilter(webView: WebView) {
+private fun injectAiOverlayEngine(webView: WebView) {
     try {
         val bundleScript = webView.context.assets.open("ai-overlay-engine/ai-overlay-engine.iife.js")
             .bufferedReader()
