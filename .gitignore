@@ -28,3 +28,6 @@ mlruns/
 
 # Apptainer builds
 *.sif
+
+ai-overlay-engine/node_modules
+ai-overlay-engine/.idea
