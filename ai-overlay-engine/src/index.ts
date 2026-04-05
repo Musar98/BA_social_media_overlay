@@ -1,3 +1,11 @@
 import { initInstagramFilter } from "./instagramFilter";
+import { initORT } from "./ai/onnx";
 
-initInstagramFilter();
+async function main() {
+  await initORT();
+  initInstagramFilter();
+}
+
+main()
+  .then((r) => r)
+  .catch((e) => console.error(e));

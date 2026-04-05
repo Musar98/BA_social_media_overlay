@@ -1,7 +1,9 @@
 import { ONNXState } from "../state/state";
 
 export async function initORT() {
-  if (ONNXState.session) return ONNXState.session;
+  if (ONNXState.session) {
+    return ONNXState.session;
+  }
 
   await new Promise<void>((resolve, reject) => {
     const s = document.createElement("script");

@@ -1,4 +1,3 @@
-import { initORT } from "./ai/onnx";
 import { runAIPrediction } from "./ai/ai-engine";
 import { observeVideos } from "./ui/videoObserver";
 import {
@@ -10,15 +9,14 @@ import {
 } from "./transformations/transformations";
 import { AIState, UIState } from "./state/state";
 import { createButton } from "./ui/button";
+import { createOverlayCanvas } from "./ui/canvas";
 
 function modifyVideo(video: HTMLVideoElement) {
   if (video.dataset.filterAttached) return;
   video.dataset.filterAttached = "true";
   video.crossOrigin = "anonymous";
 
-  const canvas = document.createElement("canvas");
-  canvas.style.cssText = `position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; display:none; z-index:0;`;
-  video.insertAdjacentElement("afterend", canvas);
+  const canvas = createOverlayCanvas(video);
 
   let renderer: any = null;
   let aiTriggered = false;
@@ -45,7 +43,7 @@ function modifyVideo(video: HTMLVideoElement) {
       if (renderer && !video.paused && !video.ended) {
         if (!aiTriggered && video.readyState >= 2) {
           aiTriggered = true;
-          initORT().then(() => runAIPrediction(video));
+          runAIPrediction(video).catch(console.error);
         }
         renderImageTransformFrame(renderer, video, AIState.params);
       }

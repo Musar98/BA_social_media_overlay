@@ -102,9 +102,15 @@ fun InstagramWebView() {
                         return loader.shouldInterceptRequest(url)
                     }
 
+                    private var lastInjectedUrl: String? = null
+
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        injectAiOverlayEngine(this@apply)
+
+                        if (url != null && url != lastInjectedUrl) {
+                            lastInjectedUrl = url
+                            injectAiOverlayEngine(this@apply)
+                        }
                     }
                 }
 
