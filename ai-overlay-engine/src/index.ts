@@ -1,9 +1,11 @@
-import { initInstagramFilter } from "./instagramFilter";
 import { initORT } from "./ai/onnx";
+import { createButton } from "./ui/button";
+import { initVideoOverlay } from "./video/video";
 
 async function main() {
   await initORT();
-  initInstagramFilter();
+  createButton();
+  initVideoOverlay();
 }
 
 main()
