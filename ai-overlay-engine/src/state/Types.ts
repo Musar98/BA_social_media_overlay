@@ -10,7 +10,7 @@ export interface ONNXStateType {
 
 //TODO extend for other model output
 export interface AIStateType {
-  params: AIParams;
+  params: AIParams | undefined;
 }
 
 export interface UIStateType {
