@@ -39,7 +39,7 @@ npm run build
 
 This will always overwrite all existing files in the `assets/ai-overlay-engine` directory.
 If you, for some reason, would like to add files there and preserve them, you would need to change the value of the `emptyOutDir` property in the
-`vite.config.ts` file to `false` in order to prevent a wipe of the directory `assets/ai-overlay-engine` on each build.
+`vite.main.config.ts` file to `false` in order to prevent a wipe of the directory `assets/ai-overlay-engine` on each build.
 
 ### Testing
 

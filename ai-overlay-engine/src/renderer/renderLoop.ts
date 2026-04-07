@@ -1,18 +1,46 @@
 import { UIState, AIState } from "../state/state";
 import { renderImageTransformFrame } from "../transformations/transformations";
 import { initRenderer, cleanupRenderer } from "./renderer";
-import { runAIPrediction } from "../ai/ai-engine";
+
+const AI_WORKER_PATH = "/static_resources/webworker_v1/init_script/aiWorker.js";
 
 export function startRenderLoop(
   video: HTMLVideoElement,
   canvas: HTMLCanvasElement,
+  aiFrameInterval = 30,
 ) {
+  console.log("STARTING RENDER LOOP");
   let renderer: any = null;
-  let aiTriggered = false;
+  let frameCount = 0;
+  let worker: Worker | null = null;
+
+  try {
+    console.log("Creating AI worker");
+    worker = new Worker(AI_WORKER_PATH);
+    console.log("Created AI worker");
+    worker.onmessage = (event) => {
+      const { aiParams, error } = event.data;
+      if (error) console.error("AI Worker error:", error);
+      if (aiParams) AIState.params = aiParams;
+    };
+  } catch (err) {
+    console.error("Failed to create AI worker:", err);
+  }
+
+  function triggerAI() {
+    if (!worker || video.readyState < 2) return;
+
+    const offscreen = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+    const ctx = offscreen.getContext("2d")!;
+    ctx.drawImage(video, 0, 0);
+    const bitmap = offscreen.transferToImageBitmap();
+    worker.postMessage({ bitmap }, [bitmap]);
+  }
 
   function loop() {
     if (!document.contains(video)) {
       cleanupRenderer(renderer);
+      worker?.terminate();
       return;
     }
 
@@ -23,10 +51,12 @@ export function startRenderLoop(
       renderer = initRenderer(renderer, canvas);
 
       if (renderer && !video.paused && !video.ended) {
-        if (!aiTriggered && video.readyState >= 2) {
-          aiTriggered = true;
-          runAIPrediction(video).catch(console.error);
+        frameCount++;
+
+        if (frameCount % aiFrameInterval === 0) {
+          triggerAI();
         }
+
         renderImageTransformFrame(renderer, video, AIState.params);
       }
     } else {

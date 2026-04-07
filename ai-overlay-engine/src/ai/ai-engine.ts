@@ -2,22 +2,20 @@ import { AIState, ONNXState } from "../state/state";
 import { resizeBuffers, prepareInput } from "./preProcessor";
 import { mapTensorToParams } from "./postProcessor";
 
-export async function runAIPrediction(video: HTMLVideoElement) {
-  if (!ONNXState.session || ONNXState.busy) return;
+export async function runAIPrediction(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+) {
+  if (!ONNXState.session || ONNXState.busy) {
+    return;
+  }
+
   ONNXState.busy = true;
 
   try {
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.drawImage(video, 0, 0);
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-
-    resizeBuffers(canvas.width, canvas.height);
-    const input = prepareInput(imgData);
+    resizeBuffers(width, height);
+    const input = prepareInput(pixels);
 
     const output = await ONNXState.session.run({
       images: input,
@@ -26,11 +24,14 @@ export async function runAIPrediction(video: HTMLVideoElement) {
 
     console.info("AI Prediction finished");
 
-    AIState.params = mapTensorToParams(
+    const params = mapTensorToParams(
       output.transform_params.data as Float32Array,
     );
+    AIState.params = params;
+    return params;
   } catch (e) {
     console.error("AI Prediction failed:", e);
+    throw e;
   } finally {
     ONNXState.busy = false;
   }
