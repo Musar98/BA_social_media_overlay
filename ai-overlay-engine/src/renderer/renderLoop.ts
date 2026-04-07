@@ -9,19 +9,20 @@ export function startRenderLoop(
   canvas: HTMLCanvasElement,
   aiFrameInterval = 30,
 ) {
-  console.log("STARTING RENDER LOOP");
   let renderer: any = null;
   let frameCount = 0;
   let worker: Worker | null = null;
 
   try {
-    console.log("Creating AI worker");
     worker = new Worker(AI_WORKER_PATH);
-    console.log("Created AI worker");
     worker.onmessage = (event) => {
       const { aiParams, error } = event.data;
-      if (error) console.error("AI Worker error:", error);
-      if (aiParams) AIState.params = aiParams;
+      if (error) {
+        console.error("AI Worker error:", error);
+      }
+      if (aiParams) {
+        AIState.params = aiParams;
+      }
     };
   } catch (err) {
     console.error("Failed to create AI worker:", err);
