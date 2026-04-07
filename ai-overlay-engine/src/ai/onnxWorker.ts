@@ -1,6 +1,3 @@
-// ai/onnxWorker.ts
-// Worker-safe ONNX initialization (no window/state imports)
-
 interface WorkerONNXState {
   session: any;
   alphasTensor: any;

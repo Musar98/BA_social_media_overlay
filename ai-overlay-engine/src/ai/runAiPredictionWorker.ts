@@ -1,6 +1,3 @@
-// ai/runAiPredictionWorker.ts
-// Worker-safe AI prediction (no window/state imports)
-
 import { getWorkerONNXState } from "./onnxWorker";
 
 let inputBuffer: Float32Array | null = null;

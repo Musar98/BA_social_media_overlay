@@ -21,6 +21,8 @@ export function startRenderLoop(
         console.error("AI Worker error:", error);
       }
       if (aiParams) {
+        const firstKey = Object.keys(aiParams)[0];
+        console.log("First param:", firstKey, aiParams[firstKey])
         AIState.params = aiParams;
       }
     };
