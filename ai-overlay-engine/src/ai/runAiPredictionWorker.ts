@@ -72,10 +72,7 @@ export async function runAIPredictionWorker(
       alphas: ONNXState.alphasTensor,
     });
 
-    const params = mapTensorToParams(
-      output.transform_params.data as Float32Array,
-    );
-    return params;
+    return mapTensorToParams(output.transform_params.data as Float32Array);
   } catch (err) {
     console.error("AI Prediction in worker failed:", err);
     throw err;
