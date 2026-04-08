@@ -2,6 +2,9 @@ import { UIState, AIState } from "../state/state";
 import { renderImageTransformFrame } from "../transformations/transformations";
 import { initRenderer, destroyRenderer } from "./renderer";
 
+//TODO Remove after debugging
+let lastLoggedParams;
+
 const AI_WORKER_PATH = "/static_resources/webworker_v1/init_script/aiWorker.js";
 
 let animationId: number | null = null;
@@ -53,13 +56,28 @@ export function startRenderLoop(
           triggerAI();
         }
 
-        console.log("[Render Loop] Rendering with params:", [
-          AIState.params?.sharp,
-          AIState.params?.exposure,
-          AIState.params?.contrast,
-          AIState.params?.saturation,
-          AIState.params?.blur,
-        ]);
+        const params = AIState.params;
+
+        //TODO Remove after debugging
+        if (
+          !lastLoggedParams ||
+          params?.sharp !== lastLoggedParams.sharp ||
+          params?.exposure !== lastLoggedParams.exposure ||
+          params?.contrast !== lastLoggedParams.contrast ||
+          params?.saturation !== lastLoggedParams.saturation ||
+          params?.blur !== lastLoggedParams.blur
+        ) {
+          console.log("[Render Loop] Rendering with params:", [
+            params?.sharp,
+            params?.exposure,
+            params?.contrast,
+            params?.saturation,
+            params?.blur,
+          ]);
+          lastLoggedParams = { ...params }; // shallow copy
+        }
+        //END OF to remove
+
         renderImageTransformFrame(renderer, video, AIState.params);
       }
     } else {
