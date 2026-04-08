@@ -10,7 +10,7 @@ let worker: Worker | null = null;
 export function startRenderLoop(
   video: HTMLVideoElement,
   canvas: HTMLCanvasElement,
-  aiFrameInterval = 30,
+  aiFrameInterval = 1,
 ) {
   const renderer = initRenderer(canvas);
   let frameCount = 0;
