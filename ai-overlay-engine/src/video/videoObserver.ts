@@ -3,25 +3,23 @@ import { modifyVideo, cleanupCurrentVideo } from "./videoModifier";
 let activeVideo: HTMLVideoElement | null = null;
 
 const intersectionObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        const video = entry.target as HTMLVideoElement;
+  (entries) => {
+    entries.forEach((entry) => {
+      const video = entry.target as HTMLVideoElement;
 
-        // only consider mostly visible videos
-        if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
-          if (activeVideo !== video) {
-            // 🔥 cleanup previous video + renderer
-            cleanupCurrentVideo();
+      if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
+        if (activeVideo !== video) {
+          cleanupCurrentVideo();
 
-            activeVideo = video;
-            modifyVideo(video);
-          }
+          activeVideo = video;
+          modifyVideo(video);
         }
-      });
-    },
-    {
-      threshold: [0.6],
-    }
+      }
+    });
+  },
+  {
+    threshold: [0.6],
+  },
 );
 
 export function observeVideos() {
@@ -44,7 +42,6 @@ export function observeVideos() {
     subtree: true,
   });
 
-  // observe existing videos
   document.querySelectorAll("video").forEach((v) => {
     intersectionObserver.observe(v);
   });

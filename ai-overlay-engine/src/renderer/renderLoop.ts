@@ -1,38 +1,21 @@
-import { UIState, AIState } from "../state/state";
+import { AIState, UIState } from "../state/state";
 import { renderImageTransformFrame } from "../transformations/transformations";
-import {
-  createImageTransformRenderer,
-  destroyImageTransformRenderer,
-} from "../transformations/transformations";
-import { CLIP_TO_UV } from "../transformations/ClipToUv";
-import { IMAGE_ADJUSTMENTS_PIPELINE } from "../transformations/ImageAdjustmentsPipeline";
 import { runAIPrediction } from "../ai/ai-engine";
+import { destroyRenderer, initRenderer } from "./renderer";
 
-let renderer: any = null;
 let animationId: number | null = null;
 
 export function startRenderLoop(
-    video: HTMLVideoElement,
-    canvas: HTMLCanvasElement
+  video: HTMLVideoElement,
+  canvas: HTMLCanvasElement,
 ) {
   let aiTriggered = false;
 
-  // 🔥 ensure only ONE renderer exists
-  if (renderer) {
-    cleanupRenderer();
-  }
-
-  renderer = createImageTransformRenderer(
-      canvas,
-      CLIP_TO_UV,
-      IMAGE_ADJUSTMENTS_PIPELINE,
-      { metrics: { enabled: false } }
-  );
+  const renderer = initRenderer(canvas);
 
   function loop() {
-    // stop if video removed
     if (!document.contains(video)) {
-      cleanupRenderer();
+      stopRenderLoop();
       return;
     }
 
@@ -65,19 +48,5 @@ export function stopRenderLoop() {
     animationId = null;
   }
 
-  cleanupRenderer();
-}
-
-function cleanupRenderer() {
-  if (!renderer) return;
-
-  // 🔥 CRITICAL: force WebGL context release
-  const gl = renderer?.gl;
-  if (gl) {
-    const ext = gl.getExtension("WEBGL_lose_context");
-    ext?.loseContext();
-  }
-
-  destroyImageTransformRenderer(renderer);
-  renderer = null;
+  destroyRenderer();
 }

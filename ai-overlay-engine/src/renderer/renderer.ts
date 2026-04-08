@@ -5,23 +5,32 @@ import {
 import { CLIP_TO_UV } from "../transformations/ClipToUv";
 import { IMAGE_ADJUSTMENTS_PIPELINE } from "../transformations/ImageAdjustmentsPipeline";
 
-export function initRenderer(renderer: any, canvas: HTMLCanvasElement) {
+let renderer: any = null;
+
+export function initRenderer(canvas: HTMLCanvasElement) {
   if (renderer) {
-    return renderer;
+    destroyRenderer();
   }
 
-  return createImageTransformRenderer(
+  renderer = createImageTransformRenderer(
     canvas,
     CLIP_TO_UV,
     IMAGE_ADJUSTMENTS_PIPELINE,
-    {
-      metrics: { enabled: false },
-    },
+    { metrics: { enabled: false } },
   );
+
+  return renderer;
 }
 
-export function cleanupRenderer(renderer: any) {
-  if (renderer) {
-    destroyImageTransformRenderer(renderer);
+export function destroyRenderer() {
+  if (!renderer) return;
+
+  const gl = renderer?.gl;
+  if (gl) {
+    const ext = gl.getExtension("WEBGL_lose_context");
+    ext?.loseContext();
   }
+
+  destroyImageTransformRenderer(renderer);
+  renderer = null;
 }
