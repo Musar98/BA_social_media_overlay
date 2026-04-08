@@ -1,5 +1,5 @@
 let inputBuffer: Float32Array | null = null;
-let inputTensor: any | null = null; // will be a window.ort.Tensor
+let inputTensor: any | null = null;
 
 let lastW = 0;
 let lastH = 0;
@@ -9,7 +9,7 @@ export function resizeBuffers(w: number, h: number) {
 
   inputBuffer = new Float32Array(3 * HW);
 
-  const ort = (window as any).ort;
+  const ort = (self as any).ort;
   inputTensor = new ort.Tensor("float32", inputBuffer, [1, 3, h, w]);
 
   lastW = w;
@@ -34,5 +34,5 @@ export function prepareInput(img: Uint8ClampedArray) {
     inputBuffer[b++] = img[i + 2] * inv255;
   }
 
-  return inputTensor; // ready for ONNX session.run()
+  return inputTensor;
 }
