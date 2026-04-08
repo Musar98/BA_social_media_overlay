@@ -1,13 +1,11 @@
 import { initORT } from "./ai/onnx";
 import { createButton } from "./ui/button";
-import { initVideoOverlay } from "./video/video";
+import { observeVideos } from "./video/videoObserver";
 
 async function main() {
   await initORT();
   createButton();
-  initVideoOverlay();
+  observeVideos();
 }
 
-main()
-  .then((r) => r)
-  .catch((e) => console.error(e));
+main().catch(console.error);

@@ -1,14 +1,51 @@
-export function observeVideos(onVideoAdded: (v: HTMLVideoElement) => void) {
-  const observer = new MutationObserver((muts) => {
+import { modifyVideo, cleanupCurrentVideo } from "./videoModifier";
+
+let activeVideo: HTMLVideoElement | null = null;
+
+const intersectionObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const video = entry.target as HTMLVideoElement;
+
+        // only consider mostly visible videos
+        if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
+          if (activeVideo !== video) {
+            // 🔥 cleanup previous video + renderer
+            cleanupCurrentVideo();
+
+            activeVideo = video;
+            modifyVideo(video);
+          }
+        }
+      });
+    },
+    {
+      threshold: [0.6],
+    }
+);
+
+export function observeVideos() {
+  const mutationObserver = new MutationObserver((muts) => {
     muts.forEach((m) => {
       m.addedNodes.forEach((node) => {
-        if (node instanceof HTMLVideoElement) onVideoAdded(node);
-        else if (node instanceof Element)
-          node.querySelectorAll("video").forEach(onVideoAdded);
+        if (node instanceof HTMLVideoElement) {
+          intersectionObserver.observe(node);
+        } else if (node instanceof Element) {
+          node.querySelectorAll("video").forEach((v) => {
+            intersectionObserver.observe(v);
+          });
+        }
       });
     });
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
-  document.querySelectorAll("video").forEach(onVideoAdded);
+  mutationObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+
+  // observe existing videos
+  document.querySelectorAll("video").forEach((v) => {
+    intersectionObserver.observe(v);
+  });
 }
