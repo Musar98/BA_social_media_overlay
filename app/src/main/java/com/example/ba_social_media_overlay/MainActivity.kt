@@ -54,7 +54,21 @@ fun InstagramWebView() {
             val loader = WebViewAssetLoader.Builder()
                 .setDomain("www.instagram.com")
                 .addPathHandler("/_onnx/", WebViewAssetLoader.AssetsPathHandler(context))
+                .addPathHandler(
+                    "/static_resources/webworker_v1/init_script/"
+                ) { path ->
+                    try {
+                        val assetPath = path.removePrefix("/static_resources/webworker_v1/init_script/")
+                        val input = context.assets.open("workers/$assetPath")
+
+                        WebResourceResponse("application/javascript", "UTF-8", input)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
                 .build()
+
+
 
             WebView(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
@@ -122,9 +136,10 @@ fun InstagramWebView() {
 
 private fun injectAiOverlayEngine(webView: WebView) {
     try {
-        val bundleScript = webView.context.assets.open("ai-overlay-engine/ai-overlay-engine.iife.js")
-            .bufferedReader()
-            .use { it.readText() }
+        val bundleScript =
+            webView.context.assets.open("ai-overlay-engine/ai-overlay-engine.iife.js")
+                .bufferedReader()
+                .use { it.readText() }
 
         webView.evaluateJavascript(bundleScript, null)
     } catch (e: Exception) {
