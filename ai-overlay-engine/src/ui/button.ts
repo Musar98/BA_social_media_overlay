@@ -1,14 +1,16 @@
 import { UIState } from "../state/state";
 
 export function createButton() {
-  if (document.getElementById("filter-toggle-btn")) return;
+  if (document.getElementById("filter-toggle-btn")) {
+    return;
+  }
 
   const btn = document.createElement("button");
   btn.id = "filter-toggle-btn";
   btn.style.cssText = `
         position: fixed;
         top: 15px;
-        left: 50%;
+        left: 70%;
         transform: translateX(-50%);
         z-index: 999999;
         padding: 8px 16px;
@@ -32,9 +34,11 @@ export function createButton() {
 
 export function updateButton() {
   const btn = document.getElementById("filter-toggle-btn");
-  if (!btn) return;
+  if (!btn) {
+    return;
+  }
 
-  btn.innerText = UIState.filterEnabled ? "Filter: ON" : "Filter: OFF";
+  btn.innerText = UIState.filterEnabled ? "Filter: On" : "Filter: Off";
   btn.style.background = UIState.filterEnabled
     ? "rgba(0, 120, 255, 0.8)"
     : "rgba(0,0,0,0.7)";
