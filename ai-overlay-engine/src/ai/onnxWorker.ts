@@ -31,7 +31,7 @@ export async function initORTWorker() {
 
   WorkerONNXState.alphasTensor = new ort.Tensor(
     "float32",
-    new Float32Array([0.1]),
+    new Float32Array([0.05]),
     [1],
   );
 

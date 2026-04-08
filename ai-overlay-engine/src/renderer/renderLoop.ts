@@ -52,7 +52,7 @@ export function startRenderLoop(
         if (frameCount % aiFrameInterval === 0) {
           triggerAI();
         }
-
+        console.log("[Render Loop] Rendering with params:", AIState.params);
         renderImageTransformFrame(renderer, video, AIState.params);
       }
     } else {
