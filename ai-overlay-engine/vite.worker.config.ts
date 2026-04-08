@@ -1,11 +1,10 @@
-// vite.worker.config.ts
 import { defineConfig } from "vite";
 
 export default defineConfig({
   build: {
     lib: {
       entry: "src/ai/aiWorker.ts",
-      name: "AIWorker", // 👈 ADD THIS
+      name: "AIWorker",
       formats: ["iife"],
       fileName: () => "aiWorker.js",
     },
