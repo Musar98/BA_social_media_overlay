@@ -29,9 +29,11 @@ export async function initORTWorker() {
     },
   );
 
+
+  //TODO setzen über arousal/valence
   WorkerONNXState.alphasTensor = new ort.Tensor(
     "float32",
-    new Float32Array([0.05]),
+    new Float32Array([0.015]),
     [1],
   );
 

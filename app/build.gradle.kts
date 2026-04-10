@@ -57,3 +57,16 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+val buildAiOverlay by tasks.registering(Exec::class) {
+    commandLine(
+        "wsl",
+        "zsh",
+        "-lc",
+        "source ~/.zshrc && cd /mnt/c/Users/Musa/AndroidStudioProjects/BA_social_media_overlay/ai-overlay-engine && nvm use 22 && npm i && npm run build"
+    )
+}
+
+tasks.named("preBuild") {
+    dependsOn(buildAiOverlay)
+}

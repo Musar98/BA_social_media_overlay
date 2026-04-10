@@ -13,7 +13,7 @@ let worker: Worker | null = null;
 export function startRenderLoop(
   video: HTMLVideoElement,
   canvas: HTMLCanvasElement,
-  aiFrameInterval = 30,
+  aiFrameInterval = 120, //TODO swap values higher to 60/90/120
 ) {
   const renderer = initRenderer(canvas);
   let frameCount = 0;
