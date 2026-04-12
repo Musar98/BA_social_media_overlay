@@ -1,27 +1,26 @@
 import { describe, it, expect } from "vitest";
 import { AIState } from "../src/state/state";
 import { AIParams } from "../src/ai/Types";
-import { mapTensorToParams } from "../src/ai/postProcessor";
+import { postProcessor } from "../src/ai/PostProcessor";
 
-describe("mapTensorToParams", () => {
-  it("returns AIState.params when input is null", () => {
-    const result = mapTensorToParams(null as any);
-    expect(result).toBe(AIState.params);
+describe("postProcessor.mapTensorToParams", () => {
+  it("throw error when input is null", () => {
+    expect(() => {
+      postProcessor.mapTensorToParams(null as any);
+    }).toThrow("Invalid AI output data");
   });
 
-  it("returns AIState.params when input array is too short", () => {
-    const result = mapTensorToParams(new Float32Array(0));
-    expect(result).toBe(AIState.params);
-
-    const result2 = mapTensorToParams(new Float32Array(10));
-    expect(result2).toBe(AIState.params);
+  it("throws error when input array is too short", () => {
+    expect(() => {
+      postProcessor.mapTensorToParams(new Float32Array(0));
+    }).toThrow("Invalid AI output data");
   });
 
   it("maps a valid Float32Array of exactly 37 elements correctly", () => {
     const data = new Float32Array(37);
     for (let i = 0; i < 37; i++) data[i] = i;
 
-    const result = mapTensorToParams(data);
+    const result = postProcessor.mapTensorToParams(data);
 
     const expected: AIParams = {
       sharp: 0,
@@ -40,7 +39,7 @@ describe("mapTensorToParams", () => {
     const data = new Float32Array(50);
     for (let i = 0; i < 50; i++) data[i] = i;
 
-    const result = mapTensorToParams(data);
+    const result = postProcessor.mapTensorToParams(data);
 
     const expected: AIParams = {
       sharp: 0,

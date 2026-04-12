@@ -1,4 +1,3 @@
-
 import { AIParams } from "../ai/Types";
 
 //TODO extend for other model output

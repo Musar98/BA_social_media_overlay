@@ -1,14 +1,18 @@
 import { getONNXState } from "./onnx";
 import { preProcessor } from "./PreProcessor";
-import { mapTensorToParams } from "./postProcessor";
+import { postProcessor } from "./PostProcessor";
 import { AIParams } from "./Types";
 
-export async function runAiPrediction(
+export async function runPrediction(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
 ): Promise<AIParams> {
   const ONNXState = getONNXState();
+
+  if (!ONNXState.alphasTensor) {
+    throw new Error("ONNX alphas tensor missing for prediction");
+  }
 
   if (!ONNXState.session) {
     throw new Error("ONNX session not initialized");
@@ -22,7 +26,11 @@ export async function runAiPrediction(
       alphas: ONNXState.alphasTensor,
     });
 
-    return mapTensorToParams(output.transform_params.data as Float32Array);
+    //TODO maybe extract mapTensorToParams this is
+    // sep concern of mapping output, not running the prediction itself
+    return postProcessor.mapTensorToParams(
+      output.transform_params.data as Float32Array,
+    );
   } catch (err) {
     console.error("AI Prediction in worker failed:", err);
     throw err;

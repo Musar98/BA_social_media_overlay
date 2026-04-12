@@ -1,9 +1,10 @@
 import { UIState, AIState } from "../state/state";
 import { renderImageTransformFrame } from "../transformation/transformations";
 import { initRenderer, destroyRenderer } from "./renderer";
+import { AIParams } from "../ai/Types";
 
 //TODO Remove after debugging
-let lastLoggedParams;
+let lastLoggedParams: AIParams | undefined;
 
 const AI_WORKER_PATH = "/static_resources/webworker_v1/init_script/aiWorker.js";
 
@@ -78,9 +79,8 @@ export function startRenderLoop(
             params?.saturation,
             params?.blur,
           ]);
-          lastLoggedParams = { ...params }; // shallow copy
+          lastLoggedParams = { ...params };
         }
-        //END OF to remove
 
         renderImageTransformFrame(renderer, video, AIState.params);
       }
