@@ -14,9 +14,9 @@ export async function runAiPrediction(
     throw new Error("ONNX session not initialized");
   }
 
-  try {
-    const input = preProcessor.prepareInput(width, height, pixels);
+  const input = preProcessor.prepareInput(width, height, pixels);
 
+  try {
     const output = await ONNXState.session.run({
       images: input,
       alphas: ONNXState.alphasTensor,
