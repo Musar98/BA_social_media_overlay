@@ -1,11 +1,11 @@
-import { initORTWorker } from "./onnx";
+import { initORT } from "./onnx";
 import { runPrediction } from "./runPrediction";
 
 self.onmessage = async (e: MessageEvent) => {
   const { bitmap } = e.data;
 
   try {
-    await initORTWorker();
+    await initORT();
 
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     const ctx = canvas.getContext("2d");

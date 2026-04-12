@@ -1,29 +1,27 @@
-import { getONNXState } from "./onnx";
 import { preProcessor } from "./PreProcessor";
 import { postProcessor } from "./PostProcessor";
 import { AIParams } from "./Types";
+import { ONNXSessionState } from "../state/state";
 
 export async function runPrediction(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
 ): Promise<AIParams> {
-  const ONNXState = getONNXState();
-
-  if (!ONNXState.alphasTensor) {
+  if (!ONNXSessionState.alphasTensor) {
     throw new Error("ONNX alphas tensor missing for prediction");
   }
 
-  if (!ONNXState.session) {
+  if (!ONNXSessionState.session) {
     throw new Error("ONNX session not initialized");
   }
 
   const input = preProcessor.prepareInput(width, height, pixels);
 
   try {
-    const output = await ONNXState.session.run({
+    const output = await ONNXSessionState.session.run({
       images: input,
-      alphas: ONNXState.alphasTensor,
+      alphas: ONNXSessionState.alphasTensor,
     });
 
     //TODO maybe extract mapTensorToParams this is

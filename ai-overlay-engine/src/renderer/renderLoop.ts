@@ -35,7 +35,9 @@ export function startRenderLoop(
   }
 
   function triggerAI() {
-    if (!worker || video.readyState < 2) return;
+    if (!worker || video.readyState < 2) {
+      return;
+    }
 
     const offscreen = new OffscreenCanvas(video.videoWidth, video.videoHeight);
     const ctx = offscreen.getContext("2d")!;

@@ -1,16 +1,6 @@
-import type { InferenceSession, Tensor } from "onnxruntime-web";
+import { ONNXSessionState } from "../state/state";
 
-interface ONNXState {
-  session: InferenceSession | null;
-  alphasTensor: Tensor | null;
-}
-
-const ONNXSessionState: ONNXState = {
-  session: null,
-  alphasTensor: null,
-};
-
-export async function initORTWorker() {
+export async function initORT() {
   if (ONNXSessionState.session) {
     return;
   }
@@ -29,7 +19,6 @@ export async function initORTWorker() {
     },
   );
 
-
   //TODO setzen über arousal/valence
   ONNXSessionState.alphasTensor = new ort.Tensor(
     "float32",
@@ -40,6 +29,3 @@ export async function initORTWorker() {
   console.log("ONNX initialized in worker");
 }
 
-export function getONNXState() {
-  return ONNXSessionState;
-}
