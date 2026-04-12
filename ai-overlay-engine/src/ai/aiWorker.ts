@@ -1,5 +1,5 @@
-import { initORTWorker } from "./onnxWorker";
-import { runAIPredictionWorker } from "./runAiPredictionWorker"; // worker-safe AI prediction
+import { initORTWorker } from "./onnx";
+import { runAiPrediction } from "./runAiPrediction"; // worker-safe AI prediction
 
 self.onmessage = async (e: MessageEvent) => {
   const { bitmap } = e.data;
@@ -16,7 +16,7 @@ self.onmessage = async (e: MessageEvent) => {
     ctx.drawImage(bitmap, 0, 0);
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-    const aiParams = await runAIPredictionWorker(
+    const aiParams = await runAiPrediction(
       imgData,
       canvas.width,
       canvas.height,

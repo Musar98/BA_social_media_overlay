@@ -1,21 +1,20 @@
-import { getWorkerONNXState } from "./onnxWorker";
-import { prepareInput, resizeBuffers } from "./preProcessor";
+import { getONNXState } from "./onnx";
+import { preProcessor } from "./PreProcessor";
 import { mapTensorToParams } from "./postProcessor";
 
-export async function runAIPredictionWorker(
+export async function runAiPrediction(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
 ): Promise<any> {
-  const ONNXState = getWorkerONNXState();
+  const ONNXState = getONNXState();
 
   if (!ONNXState.session) {
     throw new Error("ONNX session not initialized");
   }
 
   try {
-    resizeBuffers(width, height);
-    const input = prepareInput(pixels);
+    const input = preProcessor.prepareInput(width, height, pixels);
 
     const output = await ONNXState.session.run({
       images: input,
