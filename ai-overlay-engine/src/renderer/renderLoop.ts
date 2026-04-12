@@ -1,5 +1,5 @@
 import { UIState, AIState } from "../state/state";
-import { renderImageTransformFrame } from "../transformations/transformations";
+import { renderImageTransformFrame } from "../transformation/transformations";
 import { initRenderer, destroyRenderer } from "./renderer";
 
 //TODO Remove after debugging
@@ -22,8 +22,12 @@ export function startRenderLoop(
     worker = new Worker(AI_WORKER_PATH);
     worker.onmessage = (event) => {
       const { aiParams, error } = event.data;
-      if (error) console.error("AI Worker error:", error);
-      if (aiParams) AIState.params = aiParams;
+      if (error) {
+        console.error("AI Worker error:", error);
+      }
+      if (aiParams) {
+        AIState.params = aiParams;
+      }
     };
   } catch (err) {
     console.error("Failed to create AI worker:", err);
@@ -92,7 +96,9 @@ export function startRenderLoop(
 }
 
 export function stopRenderLoop() {
-  if (animationId) cancelAnimationFrame(animationId);
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+  }
   animationId = null;
 
   worker?.terminate();

@@ -1,9 +1,9 @@
 import {
   createImageTransformRenderer,
   destroyImageTransformRenderer,
-} from "../transformations/transformations";
-import { CLIP_TO_UV } from "../transformations/ClipToUv";
-import { IMAGE_ADJUSTMENTS_PIPELINE } from "../transformations/ImageAdjustmentsPipeline";
+} from "../transformation/transformations";
+import { CLIP_TO_UV } from "../transformation/ClipToUv";
+import { IMAGE_ADJUSTMENTS_PIPELINE } from "../transformation/ImageAdjustmentsPipeline";
 
 let renderer: any = null;
 
@@ -23,7 +23,9 @@ export function initRenderer(canvas: HTMLCanvasElement) {
 }
 
 export function destroyRenderer() {
-  if (!renderer) return;
+  if (!renderer) {
+    return;
+  }
 
   const gl = renderer?.gl;
   if (gl) {
