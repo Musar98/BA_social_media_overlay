@@ -1,12 +1,13 @@
 import { getONNXState } from "./onnx";
 import { preProcessor } from "./PreProcessor";
 import { mapTensorToParams } from "./postProcessor";
+import { AIParams } from "./Types";
 
 export async function runAiPrediction(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
-): Promise<any> {
+): Promise<AIParams> {
   const ONNXState = getONNXState();
 
   if (!ONNXState.session) {
