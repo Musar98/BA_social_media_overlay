@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   build: {
     lib: {
-      entry: "src/ai/aiWorker.ts",
+      entry: "src/worker/aiWorker.ts",
       name: "AIWorker",
       formats: ["iife"],
       fileName: () => "aiWorker.js",

@@ -1,9 +1,7 @@
-import { initORT } from "./onnx";
-import { runPrediction } from "./runPrediction";
+import { initORT } from "../ai/onnx";
+import { runPrediction } from "../ai/runPrediction";
 
-self.onmessage = async (e: MessageEvent) => {
-  const { bitmap } = e.data;
-
+export async function runPredictionTask(bitmap: any) {
   try {
     await initORT();
 
@@ -15,13 +13,12 @@ self.onmessage = async (e: MessageEvent) => {
 
     ctx.drawImage(bitmap, 0, 0);
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-
     const aiParams = await runPrediction(imgData, canvas.width, canvas.height);
 
-    console.log("Worker finished AI prediction");
+    console.info("Worker finished AI prediction");
     self.postMessage({ aiParams });
   } catch (err) {
     console.error("Worker error:", err);
     self.postMessage({ error: String(err) });
   }
-};
+}
