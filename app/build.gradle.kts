@@ -1,6 +1,10 @@
+import com.github.gradle.node.npm.task.NpmInstallTask
+import com.github.gradle.node.npm.task.NpmTask
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("com.github.node-gradle.node") version "7.1.0"
 }
 
 android {
@@ -58,15 +62,31 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
-val buildAiOverlay by tasks.registering(Exec::class) {
-    commandLine(
-        "wsl",
-        "zsh",
-        "-lc",
-        "source ~/.zshrc && cd /mnt/c/Users/Musa/AndroidStudioProjects/BA_social_media_overlay/ai-overlay-engine && nvm use 22 && npm i && npm run build"
-    )
+
+node {
+    download.set(true)
+    version.set("22.14.0")
+    nodeProjectDir.set(file("${rootProject.projectDir}/ai-overlay-engine"))
 }
 
+tasks.register<NpmInstallTask>("overlayNpmInstall") {
+    workingDir.set(file("${rootProject.projectDir}/ai-overlay-engine"))
+}
+
+tasks.register<NpmTask>("overlayRunTests") {
+    workingDir.set(file("${rootProject.projectDir}/ai-overlay-engine"))
+    args.set(listOf("run", "test"))
+
+}
+
+tasks.register<NpmTask>("overlayBuild") {
+    dependsOn("overlayNpmInstall")
+    dependsOn("overlayRunTests")
+    workingDir.set(file("${rootProject.projectDir}/ai-overlay-engine"))
+    args.set(listOf("run", "build"))
+}
+
+
 tasks.named("preBuild") {
-    dependsOn(buildAiOverlay)
+    dependsOn("overlayBuild")
 }
