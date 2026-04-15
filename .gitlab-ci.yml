@@ -69,7 +69,16 @@ unit-tests:
     - *before_android
   script:
     - ./gradlew test --no-daemon
+  artifacts:
+    when: always
+    paths:
+      - app/build/reports/tests/
+    reports:
+      junit: app/build/test-results/**/*.xml
 
+# -------------------------
+# LINT
+# -------------------------
 lint:
   stage: test
   image: eclipse-temurin:17-jdk
