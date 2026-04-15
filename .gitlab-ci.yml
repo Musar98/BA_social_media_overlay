@@ -4,46 +4,85 @@ stages:
   - deploy
 
 variables:
-  ANDROID_SDK_ROOT: "$CI_PROJECT_DIR/android-sdk"
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+  ANDROID_SDK_ROOT: "$CI_PROJECT_DIR/android-sdk"
+  GIT_STRATEGY: fetch
 
-before_script:
-  - apt-get update && apt-get install -y curl unzip wget git
+# -------------------------
+# COMMON SETUP (SDK + permissions)
+# -------------------------
+.before_android: &before_android
+  - apt-get update && apt-get install -y curl wget unzip git
+  - pwd
+  - ls -la
+
+  # ensure gradlew is executable
   - chmod +x ./gradlew
+  - test -f ./gradlew || (echo "❌ gradlew missing in repo root" && exit 1)
 
-  # -----------------------------
-  # Install Android SDK manually
-  # -----------------------------
+  # setup Android SDK folder
   - mkdir -p $ANDROID_SDK_ROOT
   - cd $ANDROID_SDK_ROOT
 
+  # download Android command line tools
   - wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
   - unzip cmdline-tools.zip
+
   - mkdir -p cmdline-tools/latest
   - mv cmdline-tools/* cmdline-tools/latest/ || true
 
+  # update PATH
   - export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
 
-  # Accept licenses + install SDK pieces
+  # accept licenses + install SDK
   - yes | sdkmanager --licenses || true
   - sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-build:
+  # go back to project root
+  - cd $CI_PROJECT_DIR
+
+  # point Gradle to SDK
+  - echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+# -------------------------
+# BUILD
+# -------------------------
+build-android:
   stage: build
   image: eclipse-temurin:17-jdk
+  before_script:
+    - *before_android
   script:
-    - echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
     - ./gradlew clean assembleDebug --no-daemon
+  artifacts:
+    paths:
+      - app/build/outputs/apk/
+    expire_in: 1 week
 
-test:
+# -------------------------
+# TESTS
+# -------------------------
+unit-tests:
   stage: test
   image: eclipse-temurin:17-jdk
+  before_script:
+    - *before_android
   script:
-    - echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
     - ./gradlew test --no-daemon
 
+lint:
+  stage: test
+  image: eclipse-temurin:17-jdk
+  before_script:
+    - *before_android
+  script:
+    - ./gradlew lint --no-daemon
+
+# -------------------------
+# DEPLOY (placeholder)
+# -------------------------
 deploy:
   stage: deploy
   script:
-    - echo "Deploy placeholder"
+    - echo "Deploy step placeholder"
   when: manual
