@@ -81,8 +81,8 @@ lint:
     when: always
     expose_as: "Android Lint Report"
     paths:
-      - app/build/reports/lint-results-*.html
-      - app/build/reports/lint-results-*.xml
+      - app/build/reports/lint-results-debug.html
+      - app/build/reports/lint-results-debug.xml
     expire_in: 1 week
 
 # -------------------------
