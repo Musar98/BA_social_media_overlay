@@ -9,7 +9,7 @@ variables:
   GIT_STRATEGY: fetch
 
 # -------------------------
-# COMMON SETUP (SDK + permissions)
+# SETUP (SDK + permissions)
 # -------------------------
 .before_android: &before_android
   - apt-get update && apt-get install -y curl wget unzip git
@@ -87,7 +87,6 @@ lint:
   script:
     - ./gradlew lint --no-daemon
   artifacts:
-    name: "lint-report-$CI_COMMIT_SHORT_SHA"
     when: always
     paths:
       - app/build/reports/lint-results-debug.html
