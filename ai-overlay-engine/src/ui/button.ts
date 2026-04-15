@@ -9,8 +9,8 @@ export function createButton() {
   btn.id = "filter-toggle-btn";
   btn.style.cssText = `
         position: fixed;
-        top: 15px;
-        left: 70%;
+        top: 20px;
+        left: 69%;
         transform: translateX(-50%);
         z-index: 999999;
         padding: 8px 16px;
