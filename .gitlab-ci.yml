@@ -3,16 +3,17 @@ stages:
   - test
   - deploy
 
+variables:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+
 # -------------------------
-# BUILD (Android + JS via Gradle)
+# BUILD
 # -------------------------
 build-android:
   stage: build
-  image: eclipse-temurin:17-jdk
-  before_script:
-    - apt-get update && apt-get install -y curl unzip
-    - chmod +x ./gradlew
+  image: ghcr.io/cirruslabs/android-sdk:latest
   script:
+    - chmod +x ./gradlew
     - ./gradlew clean assembleDebug --no-daemon
   artifacts:
     paths:
@@ -20,27 +21,20 @@ build-android:
     expire_in: 1 week
 
 # -------------------------
-# UNIT TESTS (Android + JVM)
+# TEST
 # -------------------------
 unit-tests:
   stage: test
-  image: eclipse-temurin:17-jdk
-  before_script:
-    - apt-get update && apt-get install -y curl unzip
-    - chmod +x ./gradlew
+  image: ghcr.io/cirruslabs/android-sdk:latest
   script:
+    - chmod +x ./gradlew
     - ./gradlew test --no-daemon
 
-# -------------------------
-# OPTIONAL: Android lint
-# -------------------------
 lint:
   stage: test
-  image: eclipse-temurin:17-jdk
-  before_script:
-    - apt-get update && apt-get install -y curl unzip
-    - chmod +x ./gradlew
+  image: ghcr.io/cirruslabs/android-sdk:latest
   script:
+    - chmod +x ./gradlew
     - ./gradlew lint --no-daemon
 
 # -------------------------
@@ -50,5 +44,4 @@ deploy:
   stage: deploy
   script:
     - echo "Deploy step placeholder"
-    - echo "If needed, connect Firebase App Distribution or Play Store here"
   when: manual
