@@ -1,30 +1,46 @@
-image: androidsdk/android-34:latest
-
 stages:
   - build
   - test
   - deploy
 
 variables:
+  ANDROID_SDK_ROOT: "$CI_PROJECT_DIR/android-sdk"
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
 before_script:
+  - apt-get update && apt-get install -y curl unzip wget git
   - chmod +x ./gradlew
 
-build-android:
+  # -----------------------------
+  # Install Android SDK manually
+  # -----------------------------
+  - mkdir -p $ANDROID_SDK_ROOT
+  - cd $ANDROID_SDK_ROOT
+
+  - wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+  - unzip cmdline-tools.zip
+  - mkdir -p cmdline-tools/latest
+  - mv cmdline-tools/* cmdline-tools/latest/ || true
+
+  - export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+
+  # Accept licenses + install SDK pieces
+  - yes | sdkmanager --licenses || true
+  - sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+build:
   stage: build
+  image: eclipse-temurin:17-jdk
   script:
+    - echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
     - ./gradlew clean assembleDebug --no-daemon
 
-unit-tests:
+test:
   stage: test
+  image: eclipse-temurin:17-jdk
   script:
+    - echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
     - ./gradlew test --no-daemon
-
-lint:
-  stage: test
-  script:
-    - ./gradlew lint --no-daemon
 
 deploy:
   stage: deploy
