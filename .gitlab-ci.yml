@@ -74,9 +74,16 @@ lint:
   stage: test
   image: eclipse-temurin:17-jdk
   before_script:
-    - *before_android
+    - chmod +x ./gradlew
   script:
     - ./gradlew lint --no-daemon
+  artifacts:
+    when: always
+    expose_as: "Android Lint Report"
+    paths:
+      - app/build/reports/lint-results-*.html
+      - app/build/reports/lint-results-*.xml
+    expire_in: 1 week
 
 # -------------------------
 # DEPLOY (placeholder)
