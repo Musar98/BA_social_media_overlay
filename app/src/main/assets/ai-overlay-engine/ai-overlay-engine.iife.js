@@ -1,7 +1,7 @@
 (function(){var e={params:void 0},t={filterEnabled:!1};function n(){if(document.getElementById(`filter-toggle-btn`))return;let e=document.createElement(`button`);e.id=`filter-toggle-btn`,e.style.cssText=`
         position: fixed;
-        top: 15px;
-        left: 70%;
+        top: 20px;
+        left: 69%;
         transform: translateX(-50%);
         z-index: 999999;
         padding: 8px 16px;
