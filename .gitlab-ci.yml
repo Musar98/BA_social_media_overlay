@@ -1,3 +1,5 @@
+image: androidsdk/android-34:latest
+
 stages:
   - build
   - test
@@ -6,42 +8,26 @@ stages:
 variables:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
-# -------------------------
-# BUILD
-# -------------------------
+before_script:
+  - chmod +x ./gradlew
+
 build-android:
   stage: build
-  image: ghcr.io/cirruslabs/android-sdk:latest
   script:
-    - chmod +x ./gradlew
     - ./gradlew clean assembleDebug --no-daemon
-  artifacts:
-    paths:
-      - app/build/outputs/apk/
-    expire_in: 1 week
 
-# -------------------------
-# TEST
-# -------------------------
 unit-tests:
   stage: test
-  image: ghcr.io/cirruslabs/android-sdk:latest
   script:
-    - chmod +x ./gradlew
     - ./gradlew test --no-daemon
 
 lint:
   stage: test
-  image: ghcr.io/cirruslabs/android-sdk:latest
   script:
-    - chmod +x ./gradlew
     - ./gradlew lint --no-daemon
 
-# -------------------------
-# DEPLOY (placeholder for now)
-# -------------------------
 deploy:
   stage: deploy
   script:
-    - echo "Deploy step placeholder"
+    - echo "Deploy placeholder"
   when: manual
