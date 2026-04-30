@@ -31,3 +31,6 @@ mlruns/
 
 ai-overlay-engine/node_modules
 ai-overlay-engine/.idea
+
+app/src/main/assets/ai-overlay-engine
+app/src/main/assets/workers

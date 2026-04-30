@@ -5,11 +5,11 @@ export default defineConfig({
     lib: {
       entry: "src/worker/aiWorker.ts",
       name: "AIWorker",
+      fileName: "ai-worker",
       formats: ["iife"],
-      fileName: () => "aiWorker.js",
     },
     outDir: "../app/src/main/assets/workers",
-    emptyOutDir: false,
+    emptyOutDir: true,
   },
   define: { "import.meta": "{}" },
 });

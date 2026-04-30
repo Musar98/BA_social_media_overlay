@@ -1,7 +1,12 @@
-import { runPredictionTask } from "./runPredictionTask";
+import { predictionTask } from "./runPredictionTask";
 
-self.onmessage = async (e: MessageEvent) => {
-  const { bitmap } = e.data;
+class AIWorkerHandler {
+  constructor() {
+    self.onmessage = async (e: MessageEvent) => {
+      const { bitmap } = e.data;
+      await predictionTask.run(bitmap);
+    };
+  }
+}
 
-  await runPredictionTask(bitmap);
-};
+new AIWorkerHandler();

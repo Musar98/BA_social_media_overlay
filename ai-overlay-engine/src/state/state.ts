@@ -1,14 +1,20 @@
+import type { InferenceSession, Tensor } from "onnxruntime-web";
 import { AIStateType, ONNXState, UIStateType } from "./Types";
+import { AIParams } from "../ai/Types";
 
-export const AIState: AIStateType = {
-  params: undefined
-};
+class AIStateHolder implements AIStateType {
+  params: AIParams | undefined = undefined;
+}
 
-export const UIState: UIStateType = {
-  filterEnabled: false,
-};
+class UIStateHolder implements UIStateType {
+  filterEnabled: boolean = false;
+}
 
-export const ONNXSessionState: ONNXState = {
-  session: null,
-  alphasTensor: null,
-};
+class ONNXStateHolder implements ONNXState {
+  session: InferenceSession | null = null;
+  alphasTensor: Tensor | null = null;
+}
+
+export const AIState: AIStateType = new AIStateHolder();
+export const UIState: UIStateType = new UIStateHolder();
+export const ONNXSessionState: ONNXState = new ONNXStateHolder();

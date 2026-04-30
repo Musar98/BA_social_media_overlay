@@ -1,110 +1,112 @@
 import { UIState, AIState } from "../state/state";
-import { renderImageTransformFrame } from "../transformation/transformations";
-import { initRenderer, destroyRenderer } from "./renderer";
+import { renderer } from "./renderer";
 import { AIParams } from "../ai/Types";
 
-//TODO Remove after debugging
-let lastLoggedParams: AIParams | undefined;
+const AI_WORKER_PATH = "/static_resources/webworker_v1/init_script/ai-worker.iife.js";
 
-const AI_WORKER_PATH = "/static_resources/webworker_v1/init_script/aiWorker.js";
+class RenderLoop {
+  private animationId: number | null = null;
+  private worker: Worker | null = null;
+  //TODO Remove after debugging
+  private lastLoggedParams: AIParams | undefined;
 
-let animationId: number | null = null;
-let worker: Worker | null = null;
+  start(
+    video: HTMLVideoElement,
+    canvas: HTMLCanvasElement,
+    aiFrameInterval = 120, //TODO swap values higher to 60/90/120
+  ): void {
+    renderer.init(canvas);
+    let frameCount = 0;
 
-export function startRenderLoop(
-  video: HTMLVideoElement,
-  canvas: HTMLCanvasElement,
-  aiFrameInterval = 120, //TODO swap values higher to 60/90/120
-) {
-  const renderer = initRenderer(canvas);
-  let frameCount = 0;
+    try {
+      this.worker = new Worker(AI_WORKER_PATH);
+      this.worker.onmessage = (event) => {
+        const { aiParams, error } = event.data;
+        if (error) {
+          console.error("AI Worker error:", error);
+        }
+        if (aiParams) {
+          AIState.params = aiParams;
+        }
+      };
+    } catch (err) {
+      console.error("Failed to create AI worker:", err);
+    }
 
-  try {
-    worker = new Worker(AI_WORKER_PATH);
-    worker.onmessage = (event) => {
-      const { aiParams, error } = event.data;
-      if (error) {
-        console.error("AI Worker error:", error);
+    const triggerAI = () => {
+      if (!this.worker || video.readyState < 2) {
+        return;
       }
-      if (aiParams) {
-        AIState.params = aiParams;
-      }
+
+      const offscreen = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+      const ctx = offscreen.getContext("2d")!;
+      ctx.drawImage(video, 0, 0);
+      const bitmap = offscreen.transferToImageBitmap();
+      this.worker.postMessage({ bitmap }, [bitmap]);
     };
-  } catch (err) {
-    console.error("Failed to create AI worker:", err);
-  }
 
-  function triggerAI() {
-    if (!worker || video.readyState < 2) {
-      return;
-    }
-
-    const offscreen = new OffscreenCanvas(video.videoWidth, video.videoHeight);
-    const ctx = offscreen.getContext("2d")!;
-    ctx.drawImage(video, 0, 0);
-    const bitmap = offscreen.transferToImageBitmap();
-    worker.postMessage({ bitmap }, [bitmap]);
-  }
-
-  function loop() {
-    if (!document.contains(video)) {
-      stopRenderLoop();
-      return;
-    }
-
-    if (UIState.filterEnabled) {
-      canvas.style.display = "block";
-      video.style.opacity = "0";
-
-      if (!video.paused && !video.ended) {
-        frameCount++;
-
-        if (frameCount % aiFrameInterval === 0) {
-          triggerAI();
-        }
-
-        const params = AIState.params;
-
-        //TODO Remove after debugging
-        if (
-          !lastLoggedParams ||
-          params?.sharp !== lastLoggedParams.sharp ||
-          params?.exposure !== lastLoggedParams.exposure ||
-          params?.contrast !== lastLoggedParams.contrast ||
-          params?.saturation !== lastLoggedParams.saturation ||
-          params?.blur !== lastLoggedParams.blur
-        ) {
-          console.log("[Render Loop] Rendering with params:", [
-            params?.sharp,
-            params?.exposure,
-            params?.contrast,
-            params?.saturation,
-            params?.blur,
-          ]);
-          lastLoggedParams = { ...params };
-        }
-
-        renderImageTransformFrame(renderer, video, AIState.params);
+    const loop = () => {
+      if (!document.contains(video)) {
+        this.stop();
+        return;
       }
-    } else {
-      canvas.style.display = "none";
-      video.style.opacity = "1";
+
+      if (UIState.filterEnabled) {
+        canvas.style.display = "block";
+        video.style.opacity = "0";
+
+        if (!video.paused && !video.ended) {
+          frameCount++;
+
+          if (frameCount % aiFrameInterval === 0) {
+            triggerAI();
+          }
+
+          const params = AIState.params;
+
+          //TODO Remove after debugging
+          if (
+            !this.lastLoggedParams ||
+            params?.sharp !== this.lastLoggedParams.sharp ||
+            params?.exposure !== this.lastLoggedParams.exposure ||
+            params?.contrast !== this.lastLoggedParams.contrast ||
+            params?.saturation !== this.lastLoggedParams.saturation ||
+            params?.blur !== this.lastLoggedParams.blur
+          ) {
+            console.log("[Render Loop] Rendering with params:", [
+              params?.sharp,
+              params?.exposure,
+              params?.contrast,
+              params?.saturation,
+              params?.blur,
+            ]);
+            this.lastLoggedParams = { ...params } as AIParams;
+          }
+
+          renderer.renderFrame(video, AIState.params);
+        }
+      } else {
+        canvas.style.display = "none";
+        video.style.opacity = "1";
+      }
+
+      this.animationId = requestAnimationFrame(loop);
+    };
+
+    loop();
+  }
+
+  stop(): void {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
     }
+    this.animationId = null;
 
-    animationId = requestAnimationFrame(loop);
+    this.worker?.terminate();
+    this.worker = null;
+
+    renderer.destroy();
   }
-
-  loop();
 }
 
-export function stopRenderLoop() {
-  if (animationId) {
-    cancelAnimationFrame(animationId);
-  }
-  animationId = null;
-
-  worker?.terminate();
-  worker = null;
-
-  destroyRenderer();
-}
+export const renderLoop = new RenderLoop();

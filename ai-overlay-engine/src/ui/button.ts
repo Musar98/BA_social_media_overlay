@@ -1,13 +1,14 @@
 import { UIState } from "../state/state";
 
-export function createButton() {
-  if (document.getElementById("filter-toggle-btn")) {
-    return;
-  }
+class FilterButton {
+  create(): void {
+    if (document.getElementById("filter-toggle-btn")) {
+      return;
+    }
 
-  const btn = document.createElement("button");
-  btn.id = "filter-toggle-btn";
-  btn.style.cssText = `
+    const btn = document.createElement("button");
+    btn.id = "filter-toggle-btn";
+    btn.style.cssText = `
         position: fixed;
         top: 20px;
         left: 69%;
@@ -23,23 +24,26 @@ export function createButton() {
         box-shadow: 0 4px 10px rgba(0,0,0,0.5);
     `;
 
-  btn.onclick = () => {
-    UIState.filterEnabled = !UIState.filterEnabled;
-    updateButton();
-  };
+    btn.onclick = () => {
+      UIState.filterEnabled = !UIState.filterEnabled;
+      this.update();
+    };
 
-  document.body.appendChild(btn);
-  updateButton();
-}
-
-export function updateButton() {
-  const btn = document.getElementById("filter-toggle-btn");
-  if (!btn) {
-    return;
+    document.body.appendChild(btn);
+    this.update();
   }
 
-  btn.innerText = UIState.filterEnabled ? "Filter: On" : "Filter: Off";
-  btn.style.background = UIState.filterEnabled
-    ? "rgba(0, 120, 255, 0.8)"
-    : "rgba(0,0,0,0.7)";
+  update(): void {
+    const btn = document.getElementById("filter-toggle-btn");
+    if (!btn) {
+      return;
+    }
+
+    btn.innerText = UIState.filterEnabled ? "Filter: On" : "Filter: Off";
+    btn.style.background = UIState.filterEnabled
+      ? "rgba(0, 120, 255, 0.8)"
+      : "rgba(0,0,0,0.7)";
+  }
 }
+
+export const filterButton = new FilterButton();
