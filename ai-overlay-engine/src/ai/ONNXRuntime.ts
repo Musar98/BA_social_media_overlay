@@ -1,6 +1,6 @@
 import { ONNXSessionState } from "../state/state";
 
-class OnnxInitializer {
+class ONNXRuntime {
   async init(): Promise<void> {
     if (ONNXSessionState.session) {
       return;
@@ -31,4 +31,4 @@ class OnnxInitializer {
   }
 }
 
-export const onnxInitializer = new OnnxInitializer();
+export const onnxRuntime = new ONNXRuntime();

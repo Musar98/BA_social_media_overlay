@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ONNXSessionState } from "../../src/state/state";
-import { runPrediction } from "../../src/ai/runPrediction";
+import { runPrediction } from "../../src/ai/AIPredictor";
 import { preProcessor } from "../../src/ai/PreProcessor";
 import { postProcessor } from "../../src/ai/PostProcessor";
 
@@ -16,7 +16,7 @@ vi.mock("../../src/ai/PostProcessor", () => ({
   },
 }));
 
-describe("runPrediction", () => {
+describe("AIPredictor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 

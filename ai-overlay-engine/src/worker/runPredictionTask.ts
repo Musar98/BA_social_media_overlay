@@ -1,10 +1,10 @@
-import { onnxInitializer } from "../ai/onnx";
-import { runPrediction } from "../ai/runPrediction";
+import { onnxRuntime } from "../ai/ONNXRuntime";
+import { runPrediction } from "../ai/AIPredictor";
 
 class PredictionTask {
   async run(bitmap: any): Promise<void> {
     try {
-      await onnxInitializer.init();
+      await onnxRuntime.init();
 
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
       const ctx = canvas.getContext("2d");
