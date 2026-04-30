@@ -1,6 +1,5 @@
 import { UIState, AIState } from "../state/state";
 import { renderer } from "./renderer";
-import { AIParams } from "../ai/Types";
 
 const AI_WORKER_PATH =
   "/static_resources/webworker_v1/init_script/ai-worker.iife.js";
