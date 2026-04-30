@@ -2,13 +2,12 @@ import { UIState, AIState } from "../state/state";
 import { renderer } from "./renderer";
 import { AIParams } from "../ai/Types";
 
-const AI_WORKER_PATH = "/static_resources/webworker_v1/init_script/ai-worker.iife.js";
+const AI_WORKER_PATH =
+  "/static_resources/webworker_v1/init_script/ai-worker.iife.js";
 
 class RenderLoop {
   private animationId: number | null = null;
   private worker: Worker | null = null;
-  //TODO Remove after debugging
-  private lastLoggedParams: AIParams | undefined;
 
   start(
     video: HTMLVideoElement,
@@ -38,7 +37,10 @@ class RenderLoop {
         return;
       }
 
-      const offscreen = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+      const offscreen = new OffscreenCanvas(
+        video.videoWidth,
+        video.videoHeight,
+      );
       const ctx = offscreen.getContext("2d")!;
       ctx.drawImage(video, 0, 0);
       const bitmap = offscreen.transferToImageBitmap();
@@ -60,27 +62,6 @@ class RenderLoop {
 
           if (frameCount % aiFrameInterval === 0) {
             triggerAI();
-          }
-
-          const params = AIState.params;
-
-          //TODO Remove after debugging
-          if (
-            !this.lastLoggedParams ||
-            params?.sharp !== this.lastLoggedParams.sharp ||
-            params?.exposure !== this.lastLoggedParams.exposure ||
-            params?.contrast !== this.lastLoggedParams.contrast ||
-            params?.saturation !== this.lastLoggedParams.saturation ||
-            params?.blur !== this.lastLoggedParams.blur
-          ) {
-            console.log("[Render Loop] Rendering with params:", [
-              params?.sharp,
-              params?.exposure,
-              params?.contrast,
-              params?.saturation,
-              params?.blur,
-            ]);
-            this.lastLoggedParams = { ...params } as AIParams;
           }
 
           renderer.renderFrame(video, AIState.params);
