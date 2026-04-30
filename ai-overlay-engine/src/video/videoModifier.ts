@@ -1,35 +1,39 @@
-import { createOverlayCanvas } from "../ui/canvas";
-import { startRenderLoop, stopRenderLoop } from "../renderer/renderLoop";
+import { overlayCanvasFactory } from "../ui/canvas";
+import { renderLoop } from "../renderer/renderLoop";
 
-let currentVideo: HTMLVideoElement | null = null;
-let currentCanvas: HTMLCanvasElement | null = null;
+class VideoModifier {
+  private currentVideo: HTMLVideoElement | null = null;
+  private currentCanvas: HTMLCanvasElement | null = null;
 
-export function modifyVideo(video: HTMLVideoElement) {
-  if (video === currentVideo) return;
+  modify(video: HTMLVideoElement): void {
+    if (video === this.currentVideo) return;
 
-  document.querySelectorAll("video").forEach((v) => {
-    if (v !== video) {
-      v.dataset.filterAttached = "true";
+    document.querySelectorAll("video").forEach((v) => {
+      if (v !== video) {
+        (v as HTMLVideoElement).dataset.filterAttached = "true";
+      }
+    });
+
+    video.dataset.filterAttached = "true";
+    video.crossOrigin = "anonymous";
+
+    this.currentVideo = video;
+    this.currentCanvas = overlayCanvasFactory.create(video);
+
+    renderLoop.start(video, this.currentCanvas);
+  }
+
+  cleanup(): void {
+    if (this.currentVideo) {
+      renderLoop.stop();
+      this.currentVideo = null;
     }
-  });
 
-  video.dataset.filterAttached = "true";
-  video.crossOrigin = "anonymous";
-
-  currentVideo = video;
-  currentCanvas = createOverlayCanvas(video);
-
-  startRenderLoop(video, currentCanvas);
-}
-
-export function cleanupCurrentVideo() {
-  if (currentVideo) {
-    stopRenderLoop();
-    currentVideo = null;
-  }
-
-  if (currentCanvas) {
-    currentCanvas.remove();
-    currentCanvas = null;
+    if (this.currentCanvas) {
+      this.currentCanvas.remove();
+      this.currentCanvas = null;
+    }
   }
 }
+
+export const videoModifier = new VideoModifier();

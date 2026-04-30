@@ -1,9 +1,11 @@
-import { createButton } from "./ui/button";
-import { observeVideos } from "./video/videoObserver";
+import { filterButton } from "./ui/button";
+import { videoObserver } from "./video/videoObserver";
 
-async function main() {
-  createButton();
-  observeVideos();
+class App {
+  async start(): Promise<void> {
+    filterButton.create();
+    videoObserver.observe();
+  }
 }
 
-main().catch(console.error);
+new App().start().catch(console.error);

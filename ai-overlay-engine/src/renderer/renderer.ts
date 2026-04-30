@@ -1,38 +1,32 @@
-import {
-  createImageTransformRenderer,
-  destroyImageTransformRenderer,
-} from "../transformation/transformations";
+import { ImageTransformRenderer } from "../transformation/transformations";
 import { CLIP_TO_UV } from "../transformation/ClipToUv";
 import { IMAGE_ADJUSTMENTS_PIPELINE } from "../transformation/ImageAdjustmentsPipeline";
 
-let renderer: any = null;
+class Renderer {
+  private instance: ImageTransformRenderer | null = null;
 
-export function initRenderer(canvas: HTMLCanvasElement) {
-  if (renderer) {
-    destroyRenderer();
+  init(canvas: HTMLCanvasElement): void {
+    if (this.instance) {
+      this.destroy();
+    }
+
+    this.instance = new ImageTransformRenderer(
+      canvas,
+      CLIP_TO_UV,
+      IMAGE_ADJUSTMENTS_PIPELINE,
+      { metrics: { enabled: false } },
+    );
   }
 
-  renderer = createImageTransformRenderer(
-    canvas,
-    CLIP_TO_UV,
-    IMAGE_ADJUSTMENTS_PIPELINE,
-    { metrics: { enabled: false } },
-  );
+  renderFrame(source: TexImageSource, params: any): void {
+    this.instance?.renderFrame(source, params);
+  }
 
-  return renderer;
+  destroy(): void {
+    if (!this.instance) return;
+    this.instance.destroy();
+    this.instance = null;
+  }
 }
 
-export function destroyRenderer() {
-  if (!renderer) {
-    return;
-  }
-
-  const gl = renderer?.gl;
-  if (gl) {
-    const ext = gl.getExtension("WEBGL_lose_context");
-    ext?.loseContext();
-  }
-
-  destroyImageTransformRenderer(renderer);
-  renderer = null;
-}
+export const renderer = new Renderer();
