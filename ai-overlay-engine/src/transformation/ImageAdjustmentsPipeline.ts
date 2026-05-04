@@ -85,9 +85,9 @@ vec3 applyExposure(vec3 c, float exposureValue) {
 // old contrast definition
 // Applies contrast around a midpoint of 0.5.
 // Values > 1.0 increase contrast, values < 1.0 reduce contrast.
-//vec3 applyContrast(vec3 c, float contrastValue) {
-//    return clamp((c - 0.5f) * contrastValue + 0.5f, 0.0f, 1.0f);
-//}
+vec3 applyContrast(vec3 c, float contrastValue) {
+   return clamp((c - 0.5f) * contrastValue + 0.5f, 0.0f, 1.0f);
+}
 
 // Adjusts saturation in HSV space.
 // Saturation is scaled, then converted back to RGB.
@@ -225,37 +225,37 @@ vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
     return clamp(mix(degenerate, c, sharpValue), 0.0f, 1.0f);
 }
 
-float rgbToGrayscaleKornia(vec3 c) {
-    return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
-}
+// float rgbToGrayscaleKornia(vec3 c) {
+//     return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+// }
 
-float estimateKorniaImageMean() {
-    float sum = 0.0;
+// float estimateKorniaImageMean() {
+//     float sum = 0.0;
+//
+//     const int N = 16; // grid size change if needed
+//
+//     for (int y = 0; y < N; y++) {
+//         float fy = (float(y) + 0.5) / float(N);
+//
+//         for (int x = 0; x < N; x++) {
+//             float fx = (float(x) + 0.5) / float(N);
+//
+//             sum += rgbToGrayscaleKornia(sampleImage(vec2(fx, fy)));
+//         }
+//     }
+//
+//     return sum / float(N * N);
+// }
 
-    const int N = 16; // grid size change if needed
-
-    for (int y = 0; y < N; y++) {
-        float fy = (float(y) + 0.5) / float(N);
-
-        for (int x = 0; x < N; x++) {
-            float fx = (float(x) + 0.5) / float(N);
-
-            sum += rgbToGrayscaleKornia(sampleImage(vec2(fx, fy)));
-        }
-    }
-
-    return sum / float(N * N);
-}
-
-vec3 applyContrast(vec3 c, float contrastValue) {
-    float imgMean = estimateKorniaImageMean();
-
-    return clamp(
-        c * contrastValue + vec3(imgMean) * (1.0 - contrastValue),
-        0.0,
-        1.0
-    );
-}
+// vec3 applyContrast(vec3 c, float contrastValue) {
+//     float imgMean = estimateKorniaImageMean();
+//
+//     return clamp(
+//         c * contrastValue + vec3(imgMean) * (1.0 - contrastValue),
+//         0.0,
+//         1.0
+//     );
+// }
 
 // Converts canvas UV coordinates into image UV coordinates while preserving
 // image aspect ratio inside the canvas.
