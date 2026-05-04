@@ -528,7 +528,7 @@ export class ImageTransformRenderer {
   } {
     const safeParams = params || {};
     return {
-      sharp: safeParams.sharp ?? 0.0,
+      sharp: safeParams.sharp ?? 1.0,
       exposure: safeParams.exposure ?? 0.0,
       contrast: safeParams.contrast ?? 1.0,
       saturation: safeParams.saturation ?? 1.0,

@@ -82,11 +82,12 @@ vec3 applyExposure(vec3 c, float exposureValue) {
 //    return clamp(c + brightValue, 0.0f, 1.0f);
 //}
 
+// old contrast definition
 // Applies contrast around a midpoint of 0.5.
 // Values > 1.0 increase contrast, values < 1.0 reduce contrast.
-vec3 applyContrast(vec3 c, float contrastValue) {
-    return clamp((c - 0.5f) * contrastValue + 0.5f, 0.0f, 1.0f);
-}
+//vec3 applyContrast(vec3 c, float contrastValue) {
+//    return clamp((c - 0.5f) * contrastValue + 0.5f, 0.0f, 1.0f);
+//}
 
 // Adjusts saturation in HSV space.
 // Saturation is scaled, then converted back to RGB.
@@ -171,31 +172,89 @@ vec3 sampleImage(vec2 uv) {
 
 // Computes Sobel edge magnitude from neighboring pixels.
 // This is used as an edge signal for sharpening / enhancement.
-vec3 sobelMagnitude(vec2 uv, vec2 texel) {
-    vec3 tl = sampleImage(uv + texel * vec2(-1.0f, -1.0f));
-    vec3 tc = sampleImage(uv + texel * vec2(0.0f, -1.0f));
-    vec3 tr = sampleImage(uv + texel * vec2(1.0f, -1.0f));
-    vec3 ml = sampleImage(uv + texel * vec2(-1.0f, 0.0f));
-    vec3 mr = sampleImage(uv + texel * vec2(1.0f, 0.0f));
-    vec3 bl = sampleImage(uv + texel * vec2(-1.0f, 1.0f));
-    vec3 bc = sampleImage(uv + texel * vec2(0.0f, 1.0f));
-    vec3 br = sampleImage(uv + texel * vec2(1.0f, 1.0f));
+//vec3 sobelMagnitude(vec2 uv, vec2 texel) {
+//    vec3 tl = sampleImage(uv + texel * vec2(-1.0f, -1.0f));
+//    vec3 tc = sampleImage(uv + texel * vec2(0.0f, -1.0f));
+//    vec3 tr = sampleImage(uv + texel * vec2(1.0f, -1.0f));
+//    vec3 ml = sampleImage(uv + texel * vec2(-1.0f, 0.0f));
+//    vec3 mr = sampleImage(uv + texel * vec2(1.0f, 0.0f));
+//    vec3 bl = sampleImage(uv + texel * vec2(-1.0f, 1.0f));
+//    vec3 bc = sampleImage(uv + texel * vec2(0.0f, 1.0f));
+//    vec3 br = sampleImage(uv + texel * vec2(1.0f, 1.0f));
 
-    vec3 gx = -tl - 2.0f * ml - bl + tr + 2.0f * mr + br;
-    vec3 gy = -tl - 2.0f * tc - tr + bl + 2.0f * bc + br;
+//    vec3 gx = -tl - 2.0f * ml - bl + tr + 2.0f * mr + br;
+//    vec3 gy = -tl - 2.0f * tc - tr + bl + 2.0f * bc + br;
 
-    return sqrt(gx * gx + gy * gy + 1e-7f);
-}
+//    return sqrt(gx * gx + gy * gy + 1e-7f);
+//}
 
 // Applies edge-based sharpening.
 // This is not classic unsharp masking. Instead, detected edge energy
 // is multiplied back into the current color and boosted by sharpValue.
-vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
-    if(sharpValue <= 0.001f)
-        return c;
+//vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
+//    if(sharpValue <= 0.001f)
+//        return c;
 
-    vec3 edges = sobelMagnitude(uv, texel);
-    return clamp(c + sharpValue * edges * c, 0.0f, 1.0f);
+//    vec3 edges = sobelMagnitude(uv, texel);
+//    return clamp(c + sharpValue * edges * c, 0.0f, 1.0f);
+//}
+
+vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
+    sharpValue = max(sharpValue, 0.0f);
+
+    if (uv.x <= 0.5f * texel.x ||
+        uv.x >= 1.0f - 0.5f * texel.x ||
+        uv.y <= 0.5f * texel.y ||
+        uv.y >= 1.0f - 0.5f * texel.y) {
+        return c;
+    }
+
+    vec3 sum =
+        sampleImage(uv + texel * vec2(-1.0f, -1.0f)) +
+        sampleImage(uv + texel * vec2( 0.0f, -1.0f)) +
+        sampleImage(uv + texel * vec2( 1.0f, -1.0f)) +
+        sampleImage(uv + texel * vec2(-1.0f,  0.0f)) +
+        5.0f * c +
+        sampleImage(uv + texel * vec2( 1.0f,  0.0f)) +
+        sampleImage(uv + texel * vec2(-1.0f,  1.0f)) +
+        sampleImage(uv + texel * vec2( 0.0f,  1.0f)) +
+        sampleImage(uv + texel * vec2( 1.0f,  1.0f));
+
+    vec3 degenerate = clamp(sum * (1.0f / 13.0f), 0.0f, 1.0f);
+
+    return clamp(mix(degenerate, c, sharpValue), 0.0f, 1.0f);
+}
+
+float rgbToGrayscaleKornia(vec3 c) {
+    return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+}
+
+float estimateKorniaImageMean() {
+    float sum = 0.0;
+
+    const int N = 16; // grid size change if needed
+
+    for (int y = 0; y < N; y++) {
+        float fy = (float(y) + 0.5) / float(N);
+
+        for (int x = 0; x < N; x++) {
+            float fx = (float(x) + 0.5) / float(N);
+
+            sum += rgbToGrayscaleKornia(sampleImage(vec2(fx, fy)));
+        }
+    }
+
+    return sum / float(N * N);
+}
+
+vec3 applyContrast(vec3 c, float contrastValue) {
+    float imgMean = estimateKorniaImageMean();
+
+    return clamp(
+        c * contrastValue + vec3(imgMean) * (1.0 - contrastValue),
+        0.0,
+        1.0
+    );
 }
 
 // Converts canvas UV coordinates into image UV coordinates while preserving
@@ -252,22 +311,58 @@ vec3 processSample(vec2 uv) {
 // Applies a small Gaussian-like blur by sampling a 5x5 neighborhood.
 // Important: each tap is fully processed first, then averaged.
 // That means blur happens over the edited result, not the raw image.
+//vec3 sampleProcessedBlur(vec2 uv, vec2 texel, float radius) {
+//    vec3 sum = vec3(0.0f);
+//    float wsum = 0.0f;
+//
+//    for(int y = -2; y <= 2; y++) {
+//        for(int x = -2; x <= 2; x++) {
+//            vec2 off = vec2(float(x), float(y)) * texel * radius;
+//            float d2 = float(x * x + y * y);
+//            float w = exp(-d2 / 4.0f);
+//
+//            sum += processSample(uv + off) * w;
+//            wsum += w;
+//        }
+//    }
+//
+//    return sum / max(wsum, 1e-6f);
+//}
+vec2 reflectUV(vec2 uv) {
+    uv = mod(uv, 2.0f);
+    uv = abs(uv);
+    return 1.0f - abs(1.0f - uv);
+}
+
+float gaussian1D(float x, float sigma) {
+    sigma = max(sigma, 1e-6f);
+    return exp(-(x * x) / (2.0f * sigma * sigma));
+}
+
 vec3 sampleProcessedBlur(vec2 uv, vec2 texel, float radius) {
+    if(radius <= 0.001f) {
+        return processSample(uv);
+    }
+
     vec3 sum = vec3(0.0f);
     float wsum = 0.0f;
 
-    for(int y = -2; y <= 2; y++) {
-        for(int x = -2; x <= 2; x++) {
-            vec2 off = vec2(float(x), float(y)) * texel * radius;
-            float d2 = float(x * x + y * y);
-            float w = exp(-d2 / 4.0f);
+    for(int y = -3; y <= 3; y++) {
+        float wy = gaussian1D(float(y), radius);
 
-            sum += processSample(uv + off) * w;
+        for(int x = -3; x <= 3; x++) {
+            float wx = gaussian1D(float(x), radius);
+            float w = wx * wy;
+
+            vec2 off = vec2(float(x), float(y)) * texel;
+            vec2 suv = reflectUV(uv + off);
+
+            sum += processSample(suv) * w;
             wsum += w;
         }
     }
 
-    return sum / max(wsum, 1e-6f);
+    return clamp(sum / max(wsum, 1e-6f), 0.0f, 1.0f);
 }
 
 // Main fragment entry point.
