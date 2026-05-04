@@ -8,21 +8,27 @@ class RenderLoop {
   private animationId: number | null = null;
   private worker: Worker | null = null;
 
+  // MobileNetV4 backbone input size
+  private readonly aiInputSize = 224;
+
   start(
     video: HTMLVideoElement,
     canvas: HTMLCanvasElement,
-    aiFrameInterval = 120, //TODO swap values higher to 60/90/120
+    aiFrameInterval = 120,
   ): void {
     renderer.init(canvas);
     let frameCount = 0;
 
     try {
       this.worker = new Worker(AI_WORKER_PATH);
+
       this.worker.onmessage = (event) => {
         const { aiParams, error } = event.data;
+
         if (error) {
           console.error("AI Worker error:", error);
         }
+
         if (aiParams) {
           AIState.params = aiParams;
         }
@@ -36,13 +42,46 @@ class RenderLoop {
         return;
       }
 
-      const offscreen = new OffscreenCanvas(
-        video.videoWidth,
-        video.videoHeight,
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+
+      if (!videoWidth || !videoHeight) {
+        return;
+      }
+
+      const targetSize = this.aiInputSize;
+
+      const sourceSize = Math.min(videoWidth, videoHeight);
+      const sourceX = (videoWidth - sourceSize) / 2;
+      const sourceY = (videoHeight - sourceSize) / 2;
+
+      const offscreen = new OffscreenCanvas(targetSize, targetSize);
+      const ctx = offscreen.getContext("2d", {
+        alpha: false,
+        desynchronized: true,
+      });
+
+      if (!ctx) {
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+
+      ctx.drawImage(
+        video,
+        sourceX,
+        sourceY,
+        sourceSize,
+        sourceSize,
+        0,
+        0,
+        targetSize,
+        targetSize,
       );
-      const ctx = offscreen.getContext("2d")!;
-      ctx.drawImage(video, 0, 0);
+
       const bitmap = offscreen.transferToImageBitmap();
+
       this.worker.postMessage({ bitmap }, [bitmap]);
     };
 
@@ -80,6 +119,7 @@ class RenderLoop {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
+
     this.animationId = null;
 
     this.worker?.terminate();
