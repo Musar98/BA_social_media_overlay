@@ -23,7 +23,10 @@ class PreProcessor {
   }
 
   public prepareInput(width: number, height: number, img: Uint8ClampedArray) {
-    this.resizeBuffers(width, height);
+    if (width !== this.lastW || height !== this.lastH || !this.inputBuffer) {
+      this.resizeBuffers(width, height);
+    }
+
     if (!this.inputBuffer || !this.inputTensor) {
       throw new Error("Buffers not initialized");
     }

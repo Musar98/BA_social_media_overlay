@@ -48,6 +48,15 @@ class PredictionTask {
         this.canvas.width,
         this.canvas.height,
       );
+
+      // Calculate image mean for contrast adjustment (Kornia style)
+      let sum = 0;
+      for (let i = 0; i < imgData.length; i += 4) {
+        // weights: 0.299*R + 0.587*G + 0.114*B
+        sum += (0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2]) / 255.0;
+      }
+      aiParams.imageMean = sum / (imgData.length / 4);
+
       const tInference = performance.now();
 
       // timing log for performance measurment

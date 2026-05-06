@@ -228,6 +228,7 @@ export class ImageTransformRenderer {
       contrast: this.gl.getUniformLocation(this.program, "u_contrast"),
       saturation: this.gl.getUniformLocation(this.program, "u_saturation"),
       blur: this.gl.getUniformLocation(this.program, "u_blur"),
+      imageMean: this.gl.getUniformLocation(this.program, "u_imageMean"),
       toneCurve: this.gl.getUniformLocation(this.program, "u_toneCurve"),
       colorCurve: this.gl.getUniformLocation(this.program, "u_colorCurve"),
     };
@@ -533,6 +534,7 @@ export class ImageTransformRenderer {
       contrast: safeParams.contrast ?? 1.0,
       saturation: safeParams.saturation ?? 1.0,
       blur: safeParams.blur ?? 0.0,
+      imageMean: safeParams.imageMean ?? 0.5,
       toneCurve: ImageTransformRenderer.writeToneCurveToBuffer(
         safeParams.toneCurve,
         this.toneCurveBuffer,
@@ -575,6 +577,7 @@ export class ImageTransformRenderer {
       gl.uniform1f(uniforms.saturation, params.saturation);
     }
     if (uniforms.blur) gl.uniform1f(uniforms.blur, params.blur);
+    if (uniforms.imageMean) gl.uniform1f(uniforms.imageMean, params.imageMean);
     if (uniforms.toneCurve) gl.uniform1fv(uniforms.toneCurve, params.toneCurve);
     if (uniforms.colorCurve) {
       gl.uniform3fv(uniforms.colorCurve, params.colorCurve);
