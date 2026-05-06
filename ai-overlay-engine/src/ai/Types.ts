@@ -4,6 +4,7 @@ export interface AIParams {
   contrast: number;
   saturation: number;
   blur: number;
+  imageMean?: number;
   toneCurve: number[];
   colorCurve: number[];
 }
