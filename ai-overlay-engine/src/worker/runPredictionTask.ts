@@ -2,29 +2,51 @@ import { onnxRuntime } from "../ai/ONNXRuntime";
 import { runPrediction } from "../ai/AIPredictor";
 
 class PredictionTask {
-  async run(bitmap: any): Promise<void> {
+  private canvas: OffscreenCanvas | null = null;
+  private ctx: OffscreenCanvasRenderingContext2D | null = null;
+
+  async warmup(): Promise<void> {
+    console.info("Starting AI Worker warmup...");
+    try {
+      await onnxRuntime.init();
+
+      // Run a dummy prediction with a small black image to JIT and load weights
+      const dummySize = 224;
+      const dummyData = new Uint8ClampedArray(dummySize * dummySize * 4);
+      await runPrediction(dummyData, dummySize, dummySize);
+
+      console.info("AI Worker warmup complete.");
+    } catch (err) {
+      console.error("AI Worker warmup failed:", err);
+    }
+  }
+
+  async run(bitmap: ImageBitmap): Promise<void> {
     const t0 = performance.now();
 
     try {
       await onnxRuntime.init();
       const tInit = performance.now();
 
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
+      if (!this.canvas || this.canvas.width !== bitmap.width || this.canvas.height !== bitmap.height) {
+        this.canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        this.ctx = this.canvas.getContext("2d");
+      }
+
+      if (!this.ctx) {
         throw new Error("Failed to get 2D context from OffscreenCanvas");
       }
 
-      ctx.drawImage(bitmap, 0, 0);
+      this.ctx.drawImage(bitmap, 0, 0);
       const tDraw = performance.now();
 
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const imgData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height).data;
       const tRead = performance.now();
 
       const aiParams = await runPrediction(
         imgData,
-        canvas.width,
-        canvas.height,
+        this.canvas.width,
+        this.canvas.height,
       );
       const tInference = performance.now();
 
@@ -41,6 +63,8 @@ class PredictionTask {
     } catch (err) {
       console.error("Worker error:", err);
       self.postMessage({ error: String(err) });
+    } finally {
+      bitmap.close();
     }
   }
 }

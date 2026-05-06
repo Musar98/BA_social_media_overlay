@@ -6,10 +6,42 @@ const AI_WORKER_PATH =
 
 class RenderLoop {
   private animationId: number | null = null;
-  private worker: Worker | null = null;
+  private static workerInstance: Worker | null = null;
 
   // MobileNetV4 backbone input size
   private readonly aiInputSize = 224;
+
+  private getWorker(): Worker | null {
+    if (RenderLoop.workerInstance) {
+      return RenderLoop.workerInstance;
+    }
+
+    try {
+      RenderLoop.workerInstance = new Worker(AI_WORKER_PATH);
+      RenderLoop.workerInstance.onmessage = (event) => {
+        const { aiParams, error, type } = event.data;
+
+        if (error) {
+          console.error("AI Worker error:", error);
+        }
+
+        if (aiParams) {
+          AIState.params = aiParams;
+        }
+
+        if (type === "initialized") {
+          console.info("AI Worker pre-warmed and ready");
+        }
+      };
+
+      // Signal initialization/warmup
+      RenderLoop.workerInstance.postMessage({ type: "init" });
+      return RenderLoop.workerInstance;
+    } catch (err) {
+      console.error("Failed to create AI worker:", err);
+      return null;
+    }
+  }
 
   start(
     video: HTMLVideoElement,
@@ -19,26 +51,11 @@ class RenderLoop {
     renderer.init(canvas);
     let frameCount = 0;
 
-    try {
-      this.worker = new Worker(AI_WORKER_PATH);
+    const worker = this.getWorker();
 
-      this.worker.onmessage = (event) => {
-        const { aiParams, error } = event.data;
-
-        if (error) {
-          console.error("AI Worker error:", error);
-        }
-
-        if (aiParams) {
-          AIState.params = aiParams;
-        }
-      };
-    } catch (err) {
-      console.error("Failed to create AI worker:", err);
-    }
-
-    const triggerAI = () => {
-      if (!this.worker || video.readyState < 2) {
+    const triggerAI = async () => {
+      const currentWorker = this.getWorker();
+      if (!currentWorker || video.readyState < 2) {
         return;
       }
 
@@ -50,40 +67,35 @@ class RenderLoop {
       }
 
       const targetSize = this.aiInputSize;
-
       const sourceSize = Math.min(videoWidth, videoHeight);
       const sourceX = (videoWidth - sourceSize) / 2;
       const sourceY = (videoHeight - sourceSize) / 2;
 
-      const offscreen = new OffscreenCanvas(targetSize, targetSize);
-      const ctx = offscreen.getContext("2d", {
-        alpha: false,
-        desynchronized: true,
-      });
+      try {
+        const bitmap = await createImageBitmap(video, sourceX, sourceY, sourceSize, sourceSize, {
+          resizeWidth: targetSize,
+          resizeHeight: targetSize,
+          resizeQuality: "medium",
+        });
 
-      if (!ctx) {
-        return;
+        currentWorker.postMessage({ bitmap }, [bitmap]);
+      } catch (err) {
+        console.error("Failed to create ImageBitmap:", err);
       }
-
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-
-      ctx.drawImage(
-        video,
-        sourceX,
-        sourceY,
-        sourceSize,
-        sourceSize,
-        0,
-        0,
-        targetSize,
-        targetSize,
-      );
-
-      const bitmap = offscreen.transferToImageBitmap();
-
-      this.worker.postMessage({ bitmap }, [bitmap]);
     };
+
+    let lastFilterEnabled = UIState.filterEnabled;
+    const updateVisibility = (enabled: boolean) => {
+      if (enabled) {
+        canvas.style.display = "block";
+        video.style.opacity = "0";
+      } else {
+        canvas.style.display = "none";
+        video.style.opacity = "1";
+      }
+    };
+
+    updateVisibility(lastFilterEnabled);
 
     const loop = () => {
       if (!document.contains(video)) {
@@ -91,10 +103,12 @@ class RenderLoop {
         return;
       }
 
-      if (UIState.filterEnabled) {
-        canvas.style.display = "block";
-        video.style.opacity = "0";
+      if (UIState.filterEnabled !== lastFilterEnabled) {
+        lastFilterEnabled = UIState.filterEnabled;
+        updateVisibility(lastFilterEnabled);
+      }
 
+      if (UIState.filterEnabled) {
         if (!video.paused && !video.ended) {
           frameCount++;
 
@@ -104,9 +118,6 @@ class RenderLoop {
 
           renderer.renderFrame(video, AIState.params);
         }
-      } else {
-        canvas.style.display = "none";
-        video.style.opacity = "1";
       }
 
       this.animationId = requestAnimationFrame(loop);
@@ -122,8 +133,8 @@ class RenderLoop {
 
     this.animationId = null;
 
-    this.worker?.terminate();
-    this.worker = null;
+    // We no longer terminate the worker here to persist ONNX state
+    // RenderLoop.workerInstance?.terminate();
 
     renderer.destroy();
   }
