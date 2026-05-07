@@ -30,7 +30,7 @@ class PredictionTask {
 
       if (!this.canvas || this.canvas.width !== bitmap.width || this.canvas.height !== bitmap.height) {
         this.canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-        this.ctx = this.canvas.getContext("2d");
+        this.ctx = this.canvas.getContext("2d", { willReadFrequently: true });
       }
 
       if (!this.ctx) {
