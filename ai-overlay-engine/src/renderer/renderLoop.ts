@@ -46,7 +46,7 @@ class RenderLoop {
   start(
     video: HTMLVideoElement,
     canvas: HTMLCanvasElement,
-    aiFrameInterval = 120,
+    aiFrameInterval = 40,
   ): void {
     renderer.init(canvas);
     let frameCount = 0;
