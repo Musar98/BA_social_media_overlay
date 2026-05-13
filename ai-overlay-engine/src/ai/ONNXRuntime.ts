@@ -22,7 +22,6 @@ class ONNXRuntime {
       },
     );
 
-    //TODO setzen über arousal/valence
     ONNXSessionState.alphasTensor = new ort.Tensor(
       "float32",
       new Float32Array([-0.05]),
