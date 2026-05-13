@@ -17,6 +17,8 @@ class ONNXRuntime {
       modelArrayBuffer,
       {
         executionProviders: ["wasm"],
+        graphOptimizationLevel: "all",
+        executionMode: "sequential",
       },
     );
 
