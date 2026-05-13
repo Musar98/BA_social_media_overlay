@@ -2,7 +2,7 @@ export const CLIP_TO_UV = `#version 300 es
 /*
 Takes 2D positions (a_pos) in clip space (range -1 to 1)
 Converts those positions into UV coordinates (0 → 1)
-Flips the Y-axis so textures don’t appear upside down
+Flips the Y-axis so textures don't appear upside down
 Passes the UVs to the fragment shader
 Outputs the vertex position unchanged to the screen
 */
