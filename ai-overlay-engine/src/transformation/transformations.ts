@@ -1,4 +1,12 @@
-import { COLOR_CURVE_STEPS, MAX_PENDING_GPU_QUERIES, TONE_CURVE_STEPS } from "./Constants";
+import {
+  COLOR_CURVE_STEPS,
+  MAX_PENDING_GPU_QUERIES,
+  TONE_CURVE_STEPS,
+} from "./Constants";
+
+const DEFAULT_SMOOTHING_ENABLED = true;
+const DEFAULT_SMOOTHING_STIFFNESS = 0.1;
+const DEFAULT_SMOOTHING_DAMPING = 0.82;
 
 interface ImageTransformMetrics {
   type: "frame" | "gpu";
@@ -18,7 +26,23 @@ interface RendererOptions {
     callback?: (metrics: ImageTransformMetrics) => void;
     fpsSmoothingWindow?: number;
   };
+  smoothing?: {
+    enabled?: boolean;
+    stiffness?: number;
+    damping?: number;
+  };
 }
+
+type NormalizedTransformParams = {
+  sharp: number;
+  exposure: number;
+  contrast: number;
+  saturation: number;
+  blur: number;
+  imageMean: number;
+  toneCurve: Float32Array;
+  colorCurve: Float32Array;
+};
 
 export class ImageTransformRenderer {
   public readonly canvas: HTMLCanvasElement;
@@ -29,8 +53,6 @@ export class ImageTransformRenderer {
   private readonly vertexCount: number;
   private readonly uniforms: Record<string, WebGLUniformLocation | null>;
   private readonly texture: WebGLTexture;
-  private readonly toneCurveBuffer: Float32Array;
-  private readonly colorCurveBuffer: Float32Array;
 
   private readonly metricsEnabled: boolean;
   private readonly metricsCallback: ((m: ImageTransformMetrics) => void) | null;
@@ -43,6 +65,22 @@ export class ImageTransformRenderer {
   private lastCompletedGpuFrameMs: number | null = null;
   private lastCpuFrameMs: number | null = null;
   private lastCpuDrawMs: number | null = null;
+
+  private readonly smoothingEnabled: boolean;
+  private readonly smoothingStiffness: number;
+  private readonly smoothingDamping: number;
+
+  private currentParams: NormalizedTransformParams | null = null;
+  private velocityParams: NormalizedTransformParams | null = null;
+
+  private readonly targetToneCurveBuffer: Float32Array;
+  private readonly targetColorCurveBuffer: Float32Array;
+
+  private readonly currentToneCurveBuffer: Float32Array;
+  private readonly currentColorCurveBuffer: Float32Array;
+
+  private readonly velocityToneCurveBuffer: Float32Array;
+  private readonly velocityColorCurveBuffer: Float32Array;
 
   constructor(
     targetCanvas: HTMLCanvasElement,
@@ -67,30 +105,54 @@ export class ImageTransformRenderer {
     this.canvas = targetCanvas;
     this.gl = gl;
     this.program = this.compileProgram(vertexShaderSource, fragmentShaderSource);
+
     const quad = this.createFullscreenQuad();
+
     this.vao = quad.vao;
     this.vbo = quad.vbo;
     this.vertexCount = quad.vertexCount;
     this.uniforms = this.resolveUniformLocations();
     this.texture = this.createSourceTexture();
-    this.toneCurveBuffer = new Float32Array(TONE_CURVE_STEPS);
-    this.colorCurveBuffer = new Float32Array(COLOR_CURVE_STEPS * 3);
+
+    this.targetToneCurveBuffer = new Float32Array(TONE_CURVE_STEPS);
+    this.targetColorCurveBuffer = new Float32Array(COLOR_CURVE_STEPS * 3);
+
+    this.currentToneCurveBuffer = new Float32Array(TONE_CURVE_STEPS);
+    this.currentColorCurveBuffer = new Float32Array(COLOR_CURVE_STEPS * 3);
+
+    this.velocityToneCurveBuffer = new Float32Array(TONE_CURVE_STEPS);
+    this.velocityColorCurveBuffer = new Float32Array(COLOR_CURVE_STEPS * 3);
 
     const metricsOptions = options?.metrics;
+
     this.metricsEnabled = Boolean(metricsOptions?.enabled);
     this.metricsCallback =
       typeof metricsOptions?.callback === "function"
         ? metricsOptions.callback
         : null;
+
     this.fpsSmoothingWindow = Math.max(
       1,
       metricsOptions?.fpsSmoothingWindow ?? 30,
     );
+
     this.timerExtension = this.metricsEnabled
       ? gl.getExtension("EXT_disjoint_timer_query_webgl2")
       : null;
 
+    const smoothingOptions = options?.smoothing;
+
+    this.smoothingEnabled =
+      smoothingOptions?.enabled ?? DEFAULT_SMOOTHING_ENABLED;
+
+    this.smoothingStiffness =
+      smoothingOptions?.stiffness ?? DEFAULT_SMOOTHING_STIFFNESS;
+
+    this.smoothingDamping =
+      smoothingOptions?.damping ?? DEFAULT_SMOOTHING_DAMPING;
+
     gl.useProgram(this.program);
+
     if (this.uniforms.image) {
       gl.uniform1i(this.uniforms.image, 0);
     }
@@ -102,23 +164,30 @@ export class ImageTransformRenderer {
 
   private compileShader(shaderType: number, shaderSource: string): WebGLShader {
     const shader = this.gl.createShader(shaderType);
+
     if (!shader) {
       throw new Error("Failed to create shader object");
     }
+
     this.gl.shaderSource(shader, shaderSource);
     this.gl.compileShader(shader);
+
     const isCompiled = this.gl.getShaderParameter(
       shader,
       this.gl.COMPILE_STATUS,
     );
+
     if (!isCompiled) {
       const compileLog =
-        this.gl.getShaderInfoLog(shader) || "Unknown shader compile nvm error";
+        this.gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+
       this.gl.deleteShader(shader);
+
       throw new Error(
         `Shader compilation failed.\n\n${compileLog}\n\nSource:\n${shaderSource}`,
       );
     }
+
     return shader;
   }
 
@@ -130,15 +199,18 @@ export class ImageTransformRenderer {
       this.gl.VERTEX_SHADER,
       vertexShaderSource,
     );
+
     const fragmentShader = this.compileShader(
       this.gl.FRAGMENT_SHADER,
       fragmentShaderSource,
     );
 
     const program = this.gl.createProgram();
+
     if (!program) {
       this.gl.deleteShader(vertexShader);
       this.gl.deleteShader(fragmentShader);
+
       throw new Error("Failed to create WebGL program");
     }
 
@@ -147,13 +219,16 @@ export class ImageTransformRenderer {
     this.gl.linkProgram(program);
 
     const isLinked = this.gl.getProgramParameter(program, this.gl.LINK_STATUS);
+
     this.gl.deleteShader(vertexShader);
     this.gl.deleteShader(fragmentShader);
 
     if (!isLinked) {
       const linkLog =
         this.gl.getProgramInfoLog(program) || "Unknown program link error";
+
       this.gl.deleteProgram(program);
+
       throw new Error(`Program linking failed.\n\n${linkLog}`);
     }
 
@@ -170,15 +245,22 @@ export class ImageTransformRenderer {
     vertexCount: number;
   } {
     const quadVertices = new Float32Array([
-      -1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1,
+      -1, -1,
+      1, -1,
+      -1, 1,
+      -1, 1,
+      1, -1,
+      1, 1,
     ]);
 
     const vao = this.gl.createVertexArray();
+
     if (!vao) {
       throw new Error("Failed to create vertex array object");
     }
 
     const vbo = this.gl.createBuffer();
+
     if (!vbo) {
       this.gl.deleteVertexArray(vao);
       throw new Error("Failed to create vertex buffer object");
@@ -192,13 +274,16 @@ export class ImageTransformRenderer {
       this.program,
       "a_pos",
     );
+
     if (positionAttributeLocation < 0) {
       this.gl.deleteBuffer(vbo);
       this.gl.deleteVertexArray(vao);
+
       throw new Error('Shader attribute "a_pos" was not found');
     }
 
     this.gl.enableVertexAttribArray(positionAttributeLocation);
+
     this.gl.vertexAttribPointer(
       positionAttributeLocation,
       2,
@@ -214,10 +299,7 @@ export class ImageTransformRenderer {
     return { vao, vbo, vertexCount: 6 };
   }
 
-  private resolveUniformLocations(): Record<
-    string,
-    WebGLUniformLocation | null
-  > {
+  private resolveUniformLocations(): Record<string, WebGLUniformLocation | null> {
     return {
       image: this.gl.getUniformLocation(this.program, "u_image"),
       texelSize: this.gl.getUniformLocation(this.program, "u_texelSize"),
@@ -236,32 +318,40 @@ export class ImageTransformRenderer {
 
   private createSourceTexture(): WebGLTexture {
     const texture = this.gl.createTexture();
+
     if (!texture) {
       throw new Error("Failed to create texture");
     }
+
     this.gl.activeTexture(this.gl.TEXTURE0);
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+
     this.gl.texParameteri(
       this.gl.TEXTURE_2D,
       this.gl.TEXTURE_WRAP_S,
       this.gl.CLAMP_TO_EDGE,
     );
+
     this.gl.texParameteri(
       this.gl.TEXTURE_2D,
       this.gl.TEXTURE_WRAP_T,
       this.gl.CLAMP_TO_EDGE,
     );
+
     this.gl.texParameteri(
       this.gl.TEXTURE_2D,
       this.gl.TEXTURE_MIN_FILTER,
       this.gl.LINEAR,
     );
+
     this.gl.texParameteri(
       this.gl.TEXTURE_2D,
       this.gl.TEXTURE_MAG_FILTER,
       this.gl.LINEAR,
     );
+
     this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+
     return texture;
   }
 
@@ -276,6 +366,7 @@ export class ImageTransformRenderer {
     ) {
       return performance.now();
     }
+
     return Date.now();
   }
 
@@ -283,16 +374,21 @@ export class ImageTransformRenderer {
     frameDurationsMs: number[],
   ): number | null {
     if (frameDurationsMs.length === 0) return null;
+
     let sum = 0;
+
     for (let i = 0; i < frameDurationsMs.length; i++) {
       sum += frameDurationsMs[i];
     }
+
     if (sum <= 0) return null;
+
     return 1000 / (sum / frameDurationsMs.length);
   }
 
   private emitMetrics(metrics: ImageTransformMetrics): void {
     if (!this.metricsEnabled || !this.metricsCallback) return;
+
     this.metricsCallback(metrics);
   }
 
@@ -303,14 +399,19 @@ export class ImageTransformRenderer {
     if (!this.metricsEnabled || !this.timerExtension) {
       return { query: null, didBegin: false };
     }
+
     if (this.pendingGpuQueries.length >= MAX_PENDING_GPU_QUERIES) {
       return { query: null, didBegin: false };
     }
+
     const query = this.gl.createQuery();
+
     if (!query) {
       return { query: null, didBegin: false };
     }
+
     this.gl.beginQuery(this.timerExtension.TIME_ELAPSED_EXT, query);
+
     return { query, didBegin: true };
   }
 
@@ -320,17 +421,20 @@ export class ImageTransformRenderer {
     frameId: number,
   ): void {
     if (!didBegin || !query || !this.timerExtension) return;
+
     this.gl.endQuery(this.timerExtension.TIME_ELAPSED_EXT);
     this.pendingGpuQueries.push({ query, frameId });
   }
 
   private pollCompletedGpuMetrics(): void {
     if (!this.metricsEnabled || !this.timerExtension) return;
+
     const ext = this.timerExtension;
     const disjoint = this.gl.getParameter(ext.GPU_DISJOINT_EXT);
 
     for (let i = 0; i < this.pendingGpuQueries.length; ) {
       const pending = this.pendingGpuQueries[i];
+
       const isAvailable = this.gl.getQueryParameter(
         pending.query,
         this.gl.QUERY_RESULT_AVAILABLE,
@@ -342,11 +446,13 @@ export class ImageTransformRenderer {
       }
 
       let gpuFrameMs: number | null = null;
+
       if (!disjoint) {
         const elapsedNanoseconds = this.gl.getQueryParameter(
           pending.query,
           this.gl.QUERY_RESULT,
         );
+
         gpuFrameMs = elapsedNanoseconds / 1e6;
         this.lastCompletedGpuFrameMs = gpuFrameMs;
       }
@@ -387,8 +493,10 @@ export class ImageTransformRenderer {
 
     if (this.lastFrameTimestampMs > 0) {
       const interFrameMs = frameEndMs - this.lastFrameTimestampMs;
+
       if (interFrameMs > 0) {
         this.recentFrameDurationsMs.push(interFrameMs);
+
         if (this.recentFrameDurationsMs.length > this.fpsSmoothingWindow) {
           this.recentFrameDurationsMs.shift();
         }
@@ -425,18 +533,21 @@ export class ImageTransformRenderer {
         height: Math.max(1, (source as HTMLVideoElement).videoHeight),
       };
     }
+
     if ("naturalWidth" in source && "naturalHeight" in source) {
       return {
         width: Math.max(1, (source as HTMLImageElement).naturalWidth),
         height: Math.max(1, (source as HTMLImageElement).naturalHeight),
       };
     }
+
     if ("width" in source && "height" in source) {
       return {
         width: Math.max(1, (source as HTMLCanvasElement).width),
         height: Math.max(1, (source as HTMLCanvasElement).height),
       };
     }
+
     throw new Error(
       "Unsupported source type: could not determine source dimensions",
     );
@@ -449,14 +560,17 @@ export class ImageTransformRenderer {
       "videoHeight" in source
     ) {
       const video = source as HTMLVideoElement;
+
       return (
         video.readyState >= 2 &&
         video.videoWidth > 0 &&
         video.videoHeight > 0
       );
     }
+
     const { width, height } =
       ImageTransformRenderer.getSourceDimensions(source);
+
     return width > 0 && height > 0;
   }
 
@@ -469,6 +583,7 @@ export class ImageTransformRenderer {
     this.gl.activeTexture(this.gl.TEXTURE0);
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
     this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, false);
+
     this.gl.texImage2D(
       this.gl.TEXTURE_2D,
       0,
@@ -486,6 +601,7 @@ export class ImageTransformRenderer {
     for (let i = 0; i < TONE_CURVE_STEPS; i++) {
       targetBuffer[i] = toneCurve?.[i] ?? 1.0;
     }
+
     return targetBuffer;
   }
 
@@ -501,33 +617,36 @@ export class ImageTransformRenderer {
       for (let i = 0; i < targetBuffer.length; i++) {
         targetBuffer[i] = 1.0;
       }
+
       return targetBuffer;
     }
+
     if (Array.isArray(colorCurve) && Array.isArray(colorCurve[0])) {
       for (let i = 0; i < COLOR_CURVE_STEPS; i++) {
         const rgb = (colorCurve[i] as [number, number, number]) || [1, 1, 1];
+
         targetBuffer[i * 3] = rgb[0] ?? 1.0;
         targetBuffer[i * 3 + 1] = rgb[1] ?? 1.0;
         targetBuffer[i * 3 + 2] = rgb[2] ?? 1.0;
       }
+
       return targetBuffer;
     }
+
     for (let i = 0; i < targetBuffer.length; i++) {
-      targetBuffer[i] = (colorCurve as number[])[i] ?? 1.0;
+      targetBuffer[i] = (colorCurve as number[] | Float32Array)[i] ?? 1.0;
     }
+
     return targetBuffer;
   }
 
-  private normalizeParams(params: any): {
-    sharp: number;
-    exposure: number;
-    contrast: number;
-    saturation: number;
-    blur: number;
-    toneCurve: Float32Array;
-    colorCurve: Float32Array;
-  } {
+  private normalizeParams(
+    params: any,
+    toneCurveBuffer: Float32Array,
+    colorCurveBuffer: Float32Array,
+  ): NormalizedTransformParams {
     const safeParams = params || {};
+
     return {
       sharp: safeParams.sharp ?? 1.0,
       exposure: safeParams.exposure ?? 0.0,
@@ -537,39 +656,186 @@ export class ImageTransformRenderer {
       imageMean: safeParams.imageMean ?? 0.5,
       toneCurve: ImageTransformRenderer.writeToneCurveToBuffer(
         safeParams.toneCurve,
-        this.toneCurveBuffer,
+        toneCurveBuffer,
       ),
       colorCurve: ImageTransformRenderer.writeColorCurveToBuffer(
         safeParams.colorCurve,
-        this.colorCurveBuffer,
+        colorCurveBuffer,
       ),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private – smoothing
+  // ---------------------------------------------------------------------------
+
+  private createZeroVelocityParams(): NormalizedTransformParams {
+    this.velocityToneCurveBuffer.fill(0);
+    this.velocityColorCurveBuffer.fill(0);
+
+    return {
+      sharp: 0,
+      exposure: 0,
+      contrast: 0,
+      saturation: 0,
+      blur: 0,
+      imageMean: 0,
+      toneCurve: this.velocityToneCurveBuffer,
+      colorCurve: this.velocityColorCurveBuffer,
+    };
+  }
+
+  private cloneParamsIntoCurrent(
+    params: NormalizedTransformParams,
+  ): NormalizedTransformParams {
+    this.currentToneCurveBuffer.set(params.toneCurve);
+    this.currentColorCurveBuffer.set(params.colorCurve);
+
+    return {
+      sharp: params.sharp,
+      exposure: params.exposure,
+      contrast: params.contrast,
+      saturation: params.saturation,
+      blur: params.blur,
+      imageMean: params.imageMean,
+      toneCurve: this.currentToneCurveBuffer,
+      colorCurve: this.currentColorCurveBuffer,
+    };
+  }
+
+  private smoothScalar(
+    current: number,
+    target: number,
+    velocity: number,
+  ): { value: number; velocity: number } {
+    velocity += (target - current) * this.smoothingStiffness;
+    velocity *= this.smoothingDamping;
+
+    return {
+      value: current + velocity,
+      velocity,
+    };
+  }
+
+  private smoothArray(
+    current: Float32Array,
+    target: Float32Array,
+    velocity: Float32Array,
+  ): void {
+    for (let i = 0; i < current.length; i++) {
+      let v = velocity[i];
+
+      v += (target[i] - current[i]) * this.smoothingStiffness;
+      v *= this.smoothingDamping;
+
+      current[i] += v;
+      velocity[i] = v;
+    }
+  }
+
+  private getSmoothedParams(
+    targetParams: NormalizedTransformParams,
+  ): NormalizedTransformParams {
+    if (!this.smoothingEnabled) {
+      return targetParams;
+    }
+
+    if (!this.currentParams) {
+      this.currentParams = this.cloneParamsIntoCurrent(targetParams);
+      this.velocityParams = this.createZeroVelocityParams();
+
+      return this.currentParams;
+    }
+
+    if (!this.velocityParams) {
+      this.velocityParams = this.createZeroVelocityParams();
+    }
+
+    const current = this.currentParams;
+    const velocity = this.velocityParams;
+
+    let result = this.smoothScalar(
+      current.sharp,
+      targetParams.sharp,
+      velocity.sharp,
+    );
+    current.sharp = result.value;
+    velocity.sharp = result.velocity;
+
+    result = this.smoothScalar(
+      current.exposure,
+      targetParams.exposure,
+      velocity.exposure,
+    );
+    current.exposure = result.value;
+    velocity.exposure = result.velocity;
+
+    result = this.smoothScalar(
+      current.contrast,
+      targetParams.contrast,
+      velocity.contrast,
+    );
+    current.contrast = result.value;
+    velocity.contrast = result.velocity;
+
+    result = this.smoothScalar(
+      current.saturation,
+      targetParams.saturation,
+      velocity.saturation,
+    );
+    current.saturation = result.value;
+    velocity.saturation = result.velocity;
+
+    result = this.smoothScalar(
+      current.blur,
+      targetParams.blur,
+      velocity.blur,
+    );
+    current.blur = result.value;
+    velocity.blur = result.velocity;
+
+    result = this.smoothScalar(
+      current.imageMean,
+      targetParams.imageMean,
+      velocity.imageMean,
+    );
+    current.imageMean = result.value;
+    velocity.imageMean = result.velocity;
+
+    this.smoothArray(
+      current.toneCurve,
+      targetParams.toneCurve,
+      velocity.toneCurve,
+    );
+
+    this.smoothArray(
+      current.colorCurve,
+      targetParams.colorCurve,
+      velocity.colorCurve,
+    );
+
+    return current;
   }
 
   private applyUniforms(
     sourceWidth: number,
     sourceHeight: number,
-    params: {
-      sharp: number;
-      exposure: number;
-      contrast: number;
-      saturation: number;
-      blur: number;
-      toneCurve: Float32Array;
-      colorCurve: Float32Array;
-    },
+    params: NormalizedTransformParams,
   ): void {
     const { uniforms, gl, canvas } = this;
 
     if (uniforms.texelSize) {
       gl.uniform2f(uniforms.texelSize, 1 / sourceWidth, 1 / sourceHeight);
     }
+
     if (uniforms.canvasSize) {
       gl.uniform2f(uniforms.canvasSize, canvas.width, canvas.height);
     }
+
     if (uniforms.imageSize) {
       gl.uniform2f(uniforms.imageSize, sourceWidth, sourceHeight);
     }
+
     if (uniforms.sharp) gl.uniform1f(uniforms.sharp, params.sharp);
     if (uniforms.exposure) gl.uniform1f(uniforms.exposure, params.exposure);
     if (uniforms.contrast) gl.uniform1f(uniforms.contrast, params.contrast);
@@ -579,6 +845,7 @@ export class ImageTransformRenderer {
     if (uniforms.blur) gl.uniform1f(uniforms.blur, params.blur);
     if (uniforms.imageMean) gl.uniform1f(uniforms.imageMean, params.imageMean);
     if (uniforms.toneCurve) gl.uniform1fv(uniforms.toneCurve, params.toneCurve);
+
     if (uniforms.colorCurve) {
       gl.uniform3fv(uniforms.colorCurve, params.colorCurve);
     }
@@ -604,10 +871,18 @@ export class ImageTransformRenderer {
 
     const { width: sourceWidth, height: sourceHeight } =
       ImageTransformRenderer.getSourceDimensions(source);
-    const normalizedParams = this.normalizeParams(params);
+
+    const targetParams = this.normalizeParams(
+      params,
+      this.targetToneCurveBuffer,
+      this.targetColorCurveBuffer,
+    );
+
+    const smoothedParams = this.getSmoothedParams(targetParams);
 
     if (this.canvas.width !== sourceWidth) this.canvas.width = sourceWidth;
     if (this.canvas.height !== sourceHeight) this.canvas.height = sourceHeight;
+
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
     this.clearCanvas();
@@ -616,7 +891,7 @@ export class ImageTransformRenderer {
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
 
-    this.applyUniforms(sourceWidth, sourceHeight, normalizedParams);
+    this.applyUniforms(sourceWidth, sourceHeight, smoothedParams);
 
     const drawStartMs = ImageTransformRenderer.nowMs();
     const gpuQueryState = this.beginGpuTimerQuery();
@@ -632,7 +907,6 @@ export class ImageTransformRenderer {
     this.gl.flush();
 
     const drawEndMs = ImageTransformRenderer.nowMs();
-
 
     this.recordCpuMetrics(
       frameId,
@@ -663,11 +937,18 @@ export class ImageTransformRenderer {
     };
   }
 
+  resetSmoothing(): void {
+    this.currentParams = null;
+    this.velocityParams = null;
+  }
+
   destroy(): void {
     for (let i = 0; i < this.pendingGpuQueries.length; i++) {
       this.gl.deleteQuery(this.pendingGpuQueries[i].query);
     }
+
     this.pendingGpuQueries.length = 0;
+
     this.gl.deleteTexture(this.texture);
     this.gl.deleteBuffer(this.vbo);
     this.gl.deleteVertexArray(this.vao);
