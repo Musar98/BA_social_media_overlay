@@ -24,7 +24,7 @@ uniform float u_sharp;       // Edge-based sharpening strength
 uniform float u_exposure;    // Exposure in stops
 uniform float u_contrast;    // Contrast multiplier
 uniform float u_saturation;  // Saturation multiplier
-uniform float u_blur;        // Blur radius multiplier
+uniform float u_blur;        // Kept for API compatibility, intentionally unused
 uniform float u_imageMean;   // Global image mean passed from CPU
 
 // Piecewise tone curve weights.
@@ -54,9 +54,9 @@ vec3 applyExposure(vec3 c, float exposureValue) {
     return clamp(c * exp2(exposureValue), 0.0f, 1.0f);
 }
 
-// Applies contrast around a global midpoint (the image mean).
+// Applies contrast around a global midpoint.
 vec3 applyContrast(vec3 c, float contrastValue, float imgMean) {
-    return clamp(c * contrastValue + vec3(imgMean) * (1.0 - contrastValue), 0.0, 1.0);
+    return clamp(c * contrastValue + vec3(imgMean) * (1.0f - contrastValue), 0.0f, 1.0f);
 }
 
 // Adjusts saturation in HSV space.
@@ -71,11 +71,13 @@ vec3 applyToneCurve(vec3 c) {
     const int STEPS = 8;
     vec3 total = vec3(0.0f);
     float stepsF = float(STEPS);
+
     for(int i = 0; i < STEPS; i++) {
         float fi = float(i);
         vec3 seg = clamp(c - fi / stepsF, 0.0f, 1.0f / stepsF);
         total += seg * u_toneCurve[i];
     }
+
     return clamp(total, 0.0f, 1.0f);
 }
 
@@ -84,11 +86,13 @@ vec3 applyColorCurve(vec3 c) {
     const int STEPS = 8;
     vec3 total = vec3(0.0f);
     float stepsF = float(STEPS);
+
     for(int i = 0; i < STEPS; i++) {
         float fi = float(i);
         vec3 seg = clamp(c - fi / stepsF, 0.0f, 1.0f / stepsF);
         total += seg * u_colorCurve[i];
     }
+
     return clamp(total, 0.0f, 1.0f);
 }
 
@@ -99,11 +103,15 @@ vec3 sampleImage(vec2 uv) {
 
 // Applies edge-based sharpening.
 vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
-    if (sharpValue <= 0.001f) return c;
-    if (uv.x <= 0.5f * texel.x || uv.x >= 1.0f - 0.5f * texel.x ||
-        uv.y <= 0.5f * texel.y || uv.y >= 1.0f - 0.5f * texel.y) {
+    if(sharpValue <= 0.001f) return c;
+
+    if(
+        uv.x <= 0.5f * texel.x || uv.x >= 1.0f - 0.5f * texel.x ||
+        uv.y <= 0.5f * texel.y || uv.y >= 1.0f - 0.5f * texel.y
+    ) {
         return c;
     }
+
     vec3 sum =
         sampleImage(uv + texel * vec2(-1.0f, -1.0f)) +
         sampleImage(uv + texel * vec2( 0.0f, -1.0f)) +
@@ -114,6 +122,7 @@ vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
         sampleImage(uv + texel * vec2(-1.0f,  1.0f)) +
         sampleImage(uv + texel * vec2( 0.0f,  1.0f)) +
         sampleImage(uv + texel * vec2( 1.0f,  1.0f));
+
     vec3 degenerate = clamp(sum * (1.0f / 13.0f), 0.0f, 1.0f);
     return clamp(mix(degenerate, c, sharpValue), 0.0f, 1.0f);
 }
@@ -122,14 +131,21 @@ vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
 bool mapCanvasUVToImageUV(vec2 canvasUV, out vec2 imageUV) {
     float canvasAspect = u_canvasSize.x / u_canvasSize.y;
     float imageAspect = u_imageSize.x / u_imageSize.y;
+
     vec2 scale = vec2(1.0f);
+
     if(imageAspect > canvasAspect) {
         scale.y = canvasAspect / imageAspect;
     } else {
         scale.x = imageAspect / canvasAspect;
     }
+
     vec2 uv = (canvasUV - 0.5f) / scale + 0.5f;
-    if(uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) return false;
+
+    if(uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) {
+        return false;
+    }
+
     imageUV = uv;
     return true;
 }
@@ -137,54 +153,29 @@ bool mapCanvasUVToImageUV(vec2 canvasUV, out vec2 imageUV) {
 // Basic adjustment stack applied once to the final color.
 vec3 adjustColor(vec3 color) {
     color = applyExposure(color, u_exposure);
-    color = applyContrast(color, u_contrast, u_imageMean);
     color = applySaturation(color, u_saturation);
     color = applyToneCurve(color);
     color = applyColorCurve(color);
+    color = applyContrast(color, u_contrast, u_imageMean);
     return color;
 }
 
-vec2 reflectUV(vec2 uv) {
-    uv = mod(uv, 2.0f);
-    uv = abs(uv);
-    return 1.0f - abs(1.0f - uv);
-}
-
-float gaussian1D(float x, float sigma) {
-    sigma = max(sigma, 1e-6f);
-    return exp(-(x * x) / (2.0f * sigma * sigma));
-}
-
-// Main logic: blur/sample RAW image, sharpen, then adjust colors.
+// Main logic: sample RAW image, sharpen, then adjust colors.
+// u_blur is intentionally ignored.
 vec3 applyOptimizedEffects(vec2 uv, vec2 texel) {
-    vec3 color;
-    if(u_blur > 0.001f) {
-        vec3 sum = vec3(0.0f);
-        float wsum = 0.0f;
-        for(int y = -3; y <= 3; y++) {
-            float wy = gaussian1D(float(y), u_blur);
-            for(int x = -3; x <= 3; x++) {
-                float wx = gaussian1D(float(x), u_blur);
-                float w = wx * wy;
-                vec2 suv = reflectUV(uv + vec2(float(x), float(y)) * texel);
-                sum += sampleImage(suv) * w;
-                wsum += w;
-            }
-        }
-        color = sum / max(wsum, 1e-6f);
-    } else {
-        color = sampleImage(uv);
-    }
+    vec3 color = sampleImage(uv);
     color = applySharpen(color, uv, texel, u_sharp);
     return adjustColor(color);
 }
 
 void main() {
     vec2 imageUV;
+
     if(!mapCanvasUVToImageUV(v_uv, imageUV)) {
         outColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
         return;
     }
+
     vec3 color = applyOptimizedEffects(imageUV, u_texelSize);
     outColor = vec4(clamp(color, 0.0f, 1.0f), 1.0f);
 }`;
