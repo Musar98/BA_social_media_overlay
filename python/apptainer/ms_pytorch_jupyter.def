@@ -1,0 +1,20 @@
+Bootstrap: docker
+From: nvcr.io/nvidia/pytorch:23.10-py3
+
+%post
+    python -m pip install --upgrade pip setuptools wheel
+
+    python -m pip install \
+        "jupyterlab>=4,<5" \
+        "ipykernel>=6" \
+        "jupyterlab-lsp>=5" \
+        "python-lsp-server[all]>=1.10" \
+        "jupytext>=1.16"
+
+    python -m pip install "ruff>=0.4"
+
+%runscript
+    echo "Starting Jupyter Lab..."
+    cd /workspace || cd $HOME
+    python -m pip install -e . 2>/dev/null || true
+    exec jupyter lab --ip=0.0.0.0 --no-browser --port=8889 --ServerApp.root_dir=/

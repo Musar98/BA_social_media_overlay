@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ONNX Image Transformer Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --border: #334155;
+      --accent: #38bdf8;
+      --good: #22c55e;
+      --bad: #ef4444;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin: 0 0 8px;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .card {
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 0 0 12px;
+    }
+
+    .controls {
+      display: grid;
+      gap: 14px;
+    }
+
+    label {
+      font-size: 13px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    input[type="file"], input[type="number"], select, button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, #0284c7, #0ea5e9);
+      border: none;
+      font-weight: 700;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+    }
+
+    .status.good { border-color: rgba(34, 197, 94, 0.4); color: #bbf7d0; }
+    .status.bad { border-color: rgba(239, 68, 68, 0.4); color: #fecaca; }
+
+    .viewer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+
+    .image-box {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.75);
+    }
+
+    .image-box h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+    }
+
+    canvas, img {
+      width: 100%;
+      display: block;
+      border-radius: 12px;
+      background: #020617;
+    }
+
+    .param-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+
+    .param-table th,
+    .param-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+      text-align: left;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 960px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>ONNX Image Transformer Demo</h1>
+    <p>
+      Load an ONNX model, pick an image, set the conditioning scalar, run inference in the browser,
+      and inspect both the transformed image output and the predicted transformation parameters.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="controls">
+          <div>
+            <div class="section-title">1. Load model</div>
+            <label for="modelFile">ONNX model file</label>
+            <input id="modelFile" type="file" accept=".onnx" />
+            <div class="hint">This page does not ship with a model. Pick any exported ONNX file locally.</div>
+          </div>
+
+          <div>
+            <div class="section-title">2. Pick image</div>
+            <label for="imageFile">Input image</label>
+            <input id="imageFile" type="file" accept="image/*" />
+          </div>
+
+          <div>
+            <div class="section-title">3. Configure input</div>
+            <div class="two-col">
+              <div>
+                <label for="alphaInput">Alpha value</label>
+                <input id="alphaInput" type="number" step="0.01" value="0.5" />
+              </div>
+              <div>
+                <label for="inputSize">Model input size</label>
+                <input id="inputSize" type="number" step="1" value="480" />
+              </div>
+            </div>
+            <div class="hint">This demo assumes image input shape [1, 3, H, W] and alpha input shape [1].</div>
+          </div>
+
+          <div>
+            <div class="section-title">4. Run</div>
+            <button id="runBtn" disabled>Run inference</button>
+          </div>
+        </div>
+
+        <div id="status" class="status">Waiting for model and image.</div>
+
+        <div class="hint" style="margin-top:14px;">
+          Expected ONNX interface, input names <code>images</code> and <code>alphas</code>, outputs <code>output_images</code> and <code>transform_params</code>.
+          The page can auto-detect actual names from the model metadata too.
+        </div>
+      </div>
+
+      <div style="display:grid; gap:20px;">
+        <div class="card">
+          <div class="section-title">Images</div>
+          <div class="viewer-grid">
+            <div class="image-box">
+              <h3>Original</h3>
+              <img id="previewImage" alt="Original preview" />
+            </div>
+            <div class="image-box">
+              <h3>Transformed</h3>
+              <canvas id="outputCanvas"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">Predicted transformations</div>
+          <div id="paramsContainer">
+            <p class="hint">No inference result yet.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const modelFileEl = document.getElementById('modelFile');
+    const imageFileEl = document.getElementById('imageFile');
+    const alphaInputEl = document.getElementById('alphaInput');
+    const inputSizeEl = document.getElementById('inputSize');
+    const runBtnEl = document.getElementById('runBtn');
+    const statusEl = document.getElementById('status');
+    const previewImageEl = document.getElementById('previewImage');
+    const outputCanvasEl = document.getElementById('outputCanvas');
+    const paramsContainerEl = document.getElementById('paramsContainer');
+
+    let session = null;
+    let imageBitmap = null;
+    let imageURL = null;
+
+    function setStatus(message, kind = '') {
+      statusEl.textContent = message;
+      statusEl.className = `status ${kind}`.trim();
+    }
+
+    function updateRunButtonState() {
+      runBtnEl.disabled = !(session && imageBitmap);
+    }
+
+    function softmax(arr) {
+      const max = Math.max(...arr);
+      const exps = arr.map(v => Math.exp(v - max));
+      const sum = exps.reduce((a, b) => a + b, 0);
+      return exps.map(v => v / sum);
+    }
+
+    async function loadModel(file) {
+      setStatus('Loading model...');
+      const buffer = await file.arrayBuffer();
+      session = await ort.InferenceSession.create(buffer, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all'
+      });
+
+      const inputNames = session.inputNames;
+      const outputNames = session.outputNames;
+
+      setStatus(
+        `Model loaded successfully.\nInputs: ${inputNames.join(', ')}\nOutputs: ${outputNames.join(', ')}`,
+        'good'
+      );
+      updateRunButtonState();
+    }
+
+    async function loadImage(file) {
+      if (imageURL) URL.revokeObjectURL(imageURL);
+      imageURL = URL.createObjectURL(file);
+      previewImageEl.src = imageURL;
+      imageBitmap = await createImageBitmap(file);
+      setStatus(session ? 'Model and image are ready.' : 'Image loaded. Waiting for model.', 'good');
+      updateRunButtonState();
+    }
+
+    function imageToTensor(bitmap, size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, size, size);
+      const { data } = ctx.getImageData(0, 0, size, size);
+
+      const floatData = new Float32Array(1 * 3 * size * size);
+      const hw = size * size;
+
+      for (let i = 0; i < hw; i++) {
+        const src = i * 4;
+        floatData[i] = data[src] / 255.0;
+        floatData[hw + i] = data[src + 1] / 255.0;
+        floatData[2 * hw + i] = data[src + 2] / 255.0;
+      }
+
+      return new ort.Tensor('float32', floatData, [1, 3, size, size]);
+    }
+
+    function alphaToTensor(alphaValue) {
+      return new ort.Tensor('float32', new Float32Array([alphaValue]), [1]);
+    }
+
+    function findImageOutput(outputs) {
+      for (const [name, tensor] of Object.entries(outputs)) {
+        if (tensor.dims.length === 4 && tensor.dims[1] === 3) {
+          return { name, tensor };
+        }
+      }
+      return null;
+    }
+
+    function findParamsOutput(outputs, imageOutputName) {
+      for (const [name, tensor] of Object.entries(outputs)) {
+        if (name === imageOutputName) continue;
+        if (tensor.dims.length >= 1) {
+          return { name, tensor };
+        }
+      }
+      return null;
+    }
+
+    function drawOutputImage(tensor) {
+      const [batch, channels, height, width] = tensor.dims;
+      if (batch !== 1 || channels !== 3) {
+        throw new Error(`Unexpected output image shape: [${tensor.dims.join(', ')}]`);
+      }
+
+      const ctx = outputCanvasEl.getContext('2d');
+      outputCanvasEl.width = width;
+      outputCanvasEl.height = height;
+
+      const imageData = ctx.createImageData(width, height);
+      const hw = height * width;
+      const src = tensor.data;
+
+      for (let i = 0; i < hw; i++) {
+        const r = Math.max(0, Math.min(255, Math.round(src[i] * 255)));
+        const g = Math.max(0, Math.min(255, Math.round(src[hw + i] * 255)));
+        const b = Math.max(0, Math.min(255, Math.round(src[2 * hw + i] * 255)));
+        const dst = i * 4;
+        imageData.data[dst] = r;
+        imageData.data[dst + 1] = g;
+        imageData.data[dst + 2] = b;
+        imageData.data[dst + 3] = 255;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    function flattenTensorData(tensor) {
+      return Array.from(tensor.data);
+    }
+
+    function renderParams(tensor) {
+      const values = flattenTensorData(tensor);
+      let html = '<table class="param-table"><thead><tr><th>Index</th><th>Value</th></tr></thead><tbody>';
+      values.forEach((value, idx) => {
+        html += `<tr><td>${idx}</td><td>${Number(value).toFixed(6)}</td></tr>`;
+      });
+      html += '</tbody></table>';
+
+      html += `<div class="hint" style="margin-top:10px;">Raw shape: [${tensor.dims.join(', ')}]</div>`;
+      paramsContainerEl.innerHTML = html;
+    }
+
+    async function runInference() {
+      try {
+        if (!session) throw new Error('No model loaded.');
+        if (!imageBitmap) throw new Error('No image loaded.');
+
+        setStatus('Running inference...');
+
+        const size = parseInt(inputSizeEl.value, 10);
+        const alpha = parseFloat(alphaInputEl.value);
+
+        if (!Number.isFinite(size) || size <= 0) throw new Error('Input size must be a positive integer.');
+        if (!Number.isFinite(alpha)) throw new Error('Alpha must be a valid number.');
+
+        const imageTensor = imageToTensor(imageBitmap, size);
+        const alphaTensor = alphaToTensor(alpha);
+
+        const inputNames = session.inputNames;
+        const feeds = {};
+
+        const imageInputName = inputNames.find(name => /image|input|images/i.test(name)) || inputNames[0];
+        const alphaInputName = inputNames.find(name => /alpha|alphas|cond|param/i.test(name)) || inputNames[1];
+
+        if (!imageInputName || !alphaInputName) {
+          throw new Error(`Could not infer model inputs. Found inputs: ${inputNames.join(', ')}`);
+        }
+
+        feeds[imageInputName] = imageTensor;
+        feeds[alphaInputName] = alphaTensor;
+
+        const outputs = await session.run(feeds);
+
+        const imageOutput = findImageOutput(outputs);
+        if (!imageOutput) {
+          throw new Error('Could not find image output in model results.');
+        }
+
+        drawOutputImage(imageOutput.tensor);
+
+        const paramsOutput = findParamsOutput(outputs, imageOutput.name);
+        if (paramsOutput) {
+          renderParams(paramsOutput.tensor);
+        } else {
+          paramsContainerEl.innerHTML = '<p class="hint">No separate parameter tensor was found.</p>';
+        }
+
+        setStatus(
+          `Inference complete.\nUsed inputs: ${imageInputName}, ${alphaInputName}\nImage output: ${imageOutput.name}${paramsOutput ? `\nParameter output: ${paramsOutput.name}` : ''}`,
+          'good'
+        );
+      } catch (error) {
+        console.error(error);
+        setStatus(`Inference failed.\n${error.message || error}`, 'bad');
+      }
+    }
+
+    modelFileEl.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        await loadModel(file);
+      } catch (error) {
+        console.error(error);
+        setStatus(`Model loading failed.\n${error.message || error}`, 'bad');
+      }
+    });
+
+    imageFileEl.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        await loadImage(file);
+      } catch (error) {
+        console.error(error);
+        setStatus(`Image loading failed.\n${error.message || error}`, 'bad');
+      }
+    });
+
+    runBtnEl.addEventListener('click', runInference);
+  </script>
+</body>
+</html>

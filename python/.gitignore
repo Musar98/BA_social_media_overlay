@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+.ipynb_checkpoints/
+
+# Data / artifacts
+data/
+outputs/
+checkpoints/
+runs/
+mlruns/
+
+# Jupyter
+*.log
+
+# Apptainer builds
+*.sif
+.Trash*
+*egg-info*
