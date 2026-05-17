@@ -18,7 +18,6 @@ class ONNXRuntime {
       {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
-        executionMode: "sequential",
       },
     );
 
