@@ -5,8 +5,8 @@ import {
 } from "./Constants";
 
 const DEFAULT_SMOOTHING_ENABLED = true;
-const DEFAULT_SMOOTHING_STIFFNESS = 0.1;
-const DEFAULT_SMOOTHING_DAMPING = 0.82;
+const DEFAULT_SMOOTHING_STIFFNESS = 0.05;
+const DEFAULT_SMOOTHING_DAMPING = 0.5;
 
 interface ImageTransformMetrics {
   type: "frame" | "gpu";
