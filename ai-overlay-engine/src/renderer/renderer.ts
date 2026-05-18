@@ -45,6 +45,10 @@ class Renderer {
     this.instance.clearSourceTexture();
   }
 
+  resetSmoothing(): void {
+    this.instance?.resetSmoothing();
+  }
+
   destroy(): void {
     if (!this.instance) return;
 

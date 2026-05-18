@@ -43,6 +43,17 @@ describe("VideoModifier", () => {
     expect(renderLoop.start).toHaveBeenCalled();
   });
 
+  it("attaches the canvas before the cleanup gap finishes", async () => {
+    const modifyPromise = videoModifier.modify(video);
+
+    expect(overlayCanvasFactory.create).toHaveBeenCalledWith(video);
+    expect(renderLoop.start).not.toHaveBeenCalled();
+
+    await modifyPromise;
+
+    expect(renderLoop.start).toHaveBeenCalled();
+  });
+
   it("cleans up correctly", async () => {
     await videoModifier.modify(video);
     videoModifier.cleanup();

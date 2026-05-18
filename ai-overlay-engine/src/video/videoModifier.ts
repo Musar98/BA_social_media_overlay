@@ -21,6 +21,12 @@ class VideoModifier {
     this.switchGeneration += 1;
     const generation = this.switchGeneration;
     videoResourceManager.enforceSingleActiveVideo(video);
+    video.dataset.filterAttached = "true";
+    video.crossOrigin = "anonymous";
+
+    this.currentVideo = video;
+    this.currentCanvas = overlayCanvasFactory.create(video);
+    const canvas = this.currentCanvas;
 
     overlayLogger.info("video-switch-cleanup-gap-start", {
       cleanupGapMs: this.cleanupGapMs,
@@ -35,14 +41,21 @@ class VideoModifier {
         isStale: generation !== this.switchGeneration,
         inDocument: document.contains(video),
       });
+
+      if (this.currentVideo === video) {
+        this.currentVideo.style.opacity = "1";
+        this.currentVideo = null;
+      }
+
+      if (this.currentCanvas === canvas) {
+        canvas.width = 1;
+        canvas.height = 1;
+        canvas.remove();
+        this.currentCanvas = null;
+      }
+
       return;
     }
-
-    video.dataset.filterAttached = "true";
-    video.crossOrigin = "anonymous";
-
-    this.currentVideo = video;
-    this.currentCanvas = overlayCanvasFactory.create(video);
 
     renderLoop.start(video, this.currentCanvas);
   }

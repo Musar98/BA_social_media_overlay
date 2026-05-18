@@ -1,6 +1,7 @@
 import { UIState, AIState } from "../state/state";
 import { renderer } from "./renderer";
 import { overlayLogger } from "../diagnostics/logger";
+import { createIdentityAIParams } from "../ai/IdentityParams";
 
 const AI_WORKER_PATH =
   "/static_resources/webworker_v1/init_script/ai-worker.iife.js";
@@ -25,6 +26,7 @@ class RenderLoop {
   private workerTerminateCount = 0;
   private aiTaskStartCount = 0;
   private aiTaskCompleteCount = 0;
+  private workerWarmupTimer: number | null = null;
 
   // MobileNetV4 backbone input size
   private readonly aiInputSize = 224;
@@ -97,6 +99,7 @@ class RenderLoop {
     this.generation += 1;
     this.aiTaskInFlight = false;
     this.workerReady = false;
+    AIState.params = createIdentityAIParams();
 
     const loopGeneration = this.generation;
     this.loopStartCount += 1;
@@ -107,11 +110,32 @@ class RenderLoop {
     });
 
     renderer.init(canvas);
-    let frameCount = 0;
+    renderer.resetSmoothing();
+    let validFrameCount = 0;
 
-    const worker = this.getWorker();
-    let hasRenderedFilteredFrame = false;
     let canvasVisible: boolean | null = null;
+    let containsCheckFrame = 0;
+
+    const scheduleWorkerWarmup = () => {
+      if (
+        RenderLoop.workerInstance ||
+        this.workerWarmupTimer !== null ||
+        this.stopped ||
+        loopGeneration !== this.generation
+      ) {
+        return;
+      }
+
+      this.workerWarmupTimer = window.setTimeout(() => {
+        this.workerWarmupTimer = null;
+
+        if (this.stopped || loopGeneration !== this.generation) {
+          return;
+        }
+
+        this.getWorker();
+      }, 0);
+    };
 
     const triggerAI = async () => {
       if (this.aiTaskInFlight || this.stopped || loopGeneration !== this.generation) {
@@ -170,7 +194,7 @@ class RenderLoop {
 
     let lastFilterEnabled = UIState.filterEnabled;
     const updateVisibility = (enabled: boolean) => {
-      const shouldShowCanvas = enabled && hasRenderedFilteredFrame;
+      const shouldShowCanvas = enabled;
 
       if (canvasVisible === shouldShowCanvas) {
         return;
@@ -194,9 +218,14 @@ class RenderLoop {
         return;
       }
 
-      if (!document.contains(video)) {
+      containsCheckFrame += 1;
+      if (containsCheckFrame >= 30 && !document.contains(video)) {
         this.stop();
         return;
+      }
+
+      if (containsCheckFrame >= 30) {
+        containsCheckFrame = 0;
       }
 
       if (UIState.filterEnabled !== lastFilterEnabled) {
@@ -206,17 +235,15 @@ class RenderLoop {
 
       if (UIState.filterEnabled) {
         if (!video.paused && !video.ended) {
-          frameCount++;
-
-          if (frameCount % aiFrameInterval === 0) {
-            triggerAI();
-          }
-
           const renderResult = renderer.renderFrame(video, AIState.params);
 
           if (renderResult?.width && renderResult.height) {
-            hasRenderedFilteredFrame = true;
-            updateVisibility(lastFilterEnabled);
+            validFrameCount += 1;
+            scheduleWorkerWarmup();
+
+            if (validFrameCount % aiFrameInterval === 0) {
+              triggerAI();
+            }
           }
         }
       }
@@ -248,6 +275,11 @@ class RenderLoop {
     this.aiTaskInFlight = false;
     this.workerReady = false;
     this.loopStopCount += 1;
+
+    if (this.workerWarmupTimer !== null) {
+      clearTimeout(this.workerWarmupTimer);
+      this.workerWarmupTimer = null;
+    }
 
     overlayLogger.info("render-loop-stop", {
       loopStopCount: this.loopStopCount,
