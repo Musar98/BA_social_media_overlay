@@ -38,8 +38,11 @@ class MockWorker {
 describe("RenderLoop", () => {
   let video: HTMLVideoElement;
   let canvas: HTMLCanvasElement;
+  let bitmap: { close: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
+    renderLoop.disposeWorker();
+    renderLoop.stop();
     vi.clearAllMocks();
     (renderer.renderFrame as any).mockReset();
     mockWorkers.length = 0;
@@ -48,6 +51,9 @@ describe("RenderLoop", () => {
     document.body.appendChild(video);
     UIState.filterEnabled = false;
     AIState.params = undefined;
+    bitmap = { close: vi.fn() };
+    // @ts-ignore
+    global.createImageBitmap = vi.fn().mockResolvedValue(bitmap);
   });
 
   it("initializes renderer on start", () => {
@@ -258,7 +264,7 @@ describe("RenderLoop", () => {
     renderLoop.stop();
   });
 
-  it("terminates the AI worker on stop after a valid rendered frame warms it", async () => {
+  it("creates the AI worker once and keeps it alive across stops", async () => {
     UIState.filterEnabled = true;
     (renderer.renderFrame as any).mockReturnValue({
       width: 100,
@@ -271,14 +277,98 @@ describe("RenderLoop", () => {
 
     renderLoop.start(video, canvas);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     const worker = mockWorkers[0];
     expect(worker).toBeDefined();
 
     renderLoop.stop();
+    renderLoop.start(video, canvas);
+    await new Promise(resolve => setTimeout(resolve, 10));
 
-    expect(worker.terminate).toHaveBeenCalled();
+    expect(mockWorkers).toHaveLength(1);
+    expect(worker.terminate).not.toHaveBeenCalled();
+    renderLoop.stop();
+  });
+
+  it("queues immediate first inference after the first valid rendered frame", async () => {
+    UIState.filterEnabled = true;
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 100,
+      height: 100,
+      drawn: true,
+    });
+    Object.defineProperty(video, "readyState", { value: 4 });
+    Object.defineProperty(video, "paused", { value: false });
+    Object.defineProperty(video, "ended", { value: false });
+    Object.defineProperty(video, "videoWidth", { value: 720 });
+    Object.defineProperty(video, "videoHeight", { value: 1280 });
+
+    renderLoop.start(video, canvas);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    const worker = mockWorkers[0];
+    expect(worker.postMessage).toHaveBeenCalledWith({ type: "init" });
+
+    worker.onmessage?.({
+      data: { type: "initialized" },
+    } as MessageEvent);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(global.createImageBitmap).toHaveBeenCalled();
+    expect(worker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "predict",
+        generation: expect.any(Number),
+      }),
+      expect.any(Array),
+    );
+
+    renderLoop.stop();
+  });
+
+  it("ignores stale worker prediction results after switching videos", async () => {
+    UIState.filterEnabled = true;
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 100,
+      height: 100,
+      drawn: true,
+    });
+    Object.defineProperty(video, "readyState", { value: 4 });
+    Object.defineProperty(video, "paused", { value: false });
+    Object.defineProperty(video, "ended", { value: false });
+    Object.defineProperty(video, "videoWidth", { value: 720 });
+    Object.defineProperty(video, "videoHeight", { value: 1280 });
+
+    const nextVideo = document.createElement("video");
+    document.body.appendChild(nextVideo);
+    Object.defineProperty(nextVideo, "readyState", { value: 4 });
+    Object.defineProperty(nextVideo, "paused", { value: false });
+    Object.defineProperty(nextVideo, "ended", { value: false });
+    Object.defineProperty(nextVideo, "videoWidth", { value: 720 });
+    Object.defineProperty(nextVideo, "videoHeight", { value: 1280 });
+
+    renderLoop.start(video, canvas);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const worker = mockWorkers[0];
+    worker.onmessage?.({ data: { type: "initialized" } } as MessageEvent);
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    renderLoop.start(nextVideo, canvas);
+
+    worker.onmessage?.({
+      data: {
+        type: "prediction",
+        generation: -1,
+        aiParams: { sharp: 5 },
+      },
+    } as MessageEvent);
+
+    expect(AIState.params).toEqual(createIdentityAIParams());
+
+    renderLoop.stop();
   });
 
   it("uses requestVideoFrameCallback when available", async () => {

@@ -15,11 +15,12 @@ class RenderLoop {
   private animationId: number | null = null;
   private videoFrameCallbackId: number | null = null;
   private static workerInstance: Worker | null = null;
+  private static workerInitialized = false;
+  private static workerInitializing = false;
   private activeVideo: HTMLVideoElement | null = null;
   private stopped = true;
   private generation = 0;
   private aiTaskInFlight = false;
-  private workerReady = false;
   private loopStartCount = 0;
   private loopStopCount = 0;
   private workerCreateCount = 0;
@@ -27,6 +28,7 @@ class RenderLoop {
   private aiTaskStartCount = 0;
   private aiTaskCompleteCount = 0;
   private workerWarmupTimer: number | null = null;
+  private pendingImmediateInferenceGeneration: number | null = null;
 
   // MobileNetV4 backbone input size
   private readonly aiInputSize = 224;
@@ -38,7 +40,6 @@ class RenderLoop {
 
     try {
       const worker = new Worker(AI_WORKER_PATH);
-      const workerGeneration = this.generation;
 
       RenderLoop.workerInstance = worker;
       this.workerCreateCount += 1;
@@ -52,34 +53,43 @@ class RenderLoop {
           return;
         }
 
-        const { aiParams, error, type } = event.data;
+        const { aiParams, error, generation, type } = event.data;
 
         if (error) {
           overlayLogger.error("ai-worker-error", { error });
         }
 
         if (type === "initialized") {
-          this.workerReady = true;
+          RenderLoop.workerInitialized = true;
+          RenderLoop.workerInitializing = false;
           overlayLogger.info("ai-worker-ready");
+
+          if (
+            this.pendingImmediateInferenceGeneration !== null &&
+            this.pendingImmediateInferenceGeneration === this.generation
+          ) {
+            const pendingGeneration = this.pendingImmediateInferenceGeneration;
+            this.pendingImmediateInferenceGeneration = null;
+            void this.triggerAI(pendingGeneration);
+          }
+
+          return;
         }
 
-        if (aiParams && !this.stopped && workerGeneration === this.generation) {
+        if (type === "prediction" && aiParams && !this.stopped && generation === this.generation) {
           AIState.params = aiParams;
         }
 
-        if (aiParams || error) {
+        if (type === "prediction" || error) {
           this.aiTaskInFlight = false;
           this.aiTaskCompleteCount += 1;
           overlayLogger.verbose("ai-task-completed", {
             aiTaskCompleteCount: this.aiTaskCompleteCount,
-            generation: this.generation,
+            generation,
             hasError: Boolean(error),
           });
         }
       };
-
-      // Signal initialization/warmup
-      worker.postMessage({ type: "init" });
       return worker;
     } catch (err) {
       overlayLogger.error("ai-worker-create-failed", { error: String(err) });
@@ -98,7 +108,7 @@ class RenderLoop {
     this.stopped = false;
     this.generation += 1;
     this.aiTaskInFlight = false;
-    this.workerReady = false;
+    this.pendingImmediateInferenceGeneration = null;
     AIState.params = createIdentityAIParams();
 
     const loopGeneration = this.generation;
@@ -119,7 +129,6 @@ class RenderLoop {
 
     const scheduleWorkerWarmup = () => {
       if (
-        RenderLoop.workerInstance ||
         this.workerWarmupTimer !== null ||
         this.stopped ||
         loopGeneration !== this.generation
@@ -135,62 +144,8 @@ class RenderLoop {
         }
 
         this.getWorker();
+        this.ensureWorkerInitialized();
       }, 0);
-    };
-
-    const triggerAI = async () => {
-      if (this.aiTaskInFlight || this.stopped || loopGeneration !== this.generation) {
-        return;
-      }
-
-      const currentWorker = this.getWorker();
-      if (!currentWorker || !this.workerReady || video.readyState < 2) {
-        return;
-      }
-
-      const videoWidth = video.videoWidth;
-      const videoHeight = video.videoHeight;
-
-      if (!videoWidth || !videoHeight) {
-        return;
-      }
-
-      const targetSize = this.aiInputSize;
-      const sourceSize = Math.min(videoWidth, videoHeight);
-      const sourceX = (videoWidth - sourceSize) / 2;
-      const sourceY = (videoHeight - sourceSize) / 2;
-
-      this.aiTaskInFlight = true;
-      this.aiTaskStartCount += 1;
-      overlayLogger.verbose("ai-task-started", {
-        aiTaskStartCount: this.aiTaskStartCount,
-        generation: this.generation,
-      });
-
-      try {
-        const bitmap = await createImageBitmap(video, sourceX, sourceY, sourceSize, sourceSize, {
-          resizeWidth: targetSize,
-          resizeHeight: targetSize,
-          resizeQuality: "medium",
-        });
-
-        if (this.stopped || loopGeneration !== this.generation || this.activeVideo !== video) {
-          bitmap.close();
-          this.aiTaskInFlight = false;
-          this.aiTaskCompleteCount += 1;
-          return;
-        }
-
-        currentWorker.postMessage({ bitmap }, [bitmap]);
-      } catch (err) {
-        overlayLogger.error("image-bitmap-create-failed", {
-          error: String(err),
-        });
-        if (loopGeneration === this.generation) {
-          this.aiTaskInFlight = false;
-          this.aiTaskCompleteCount += 1;
-        }
-      }
     };
 
     let lastFilterEnabled = UIState.filterEnabled;
@@ -247,8 +202,10 @@ class RenderLoop {
             validFrameCount += 1;
             scheduleWorkerWarmup();
 
-            if (validFrameCount % aiFrameInterval === 0) {
-              triggerAI();
+            if (validFrameCount === 1) {
+              void this.triggerAI(loopGeneration, true);
+            } else if ((validFrameCount - 1) % aiFrameInterval === 0) {
+              void this.triggerAI(loopGeneration);
             }
           }
         }
@@ -279,7 +236,7 @@ class RenderLoop {
     this.stopped = true;
     this.generation += 1;
     this.aiTaskInFlight = false;
-    this.workerReady = false;
+    this.pendingImmediateInferenceGeneration = null;
     this.loopStopCount += 1;
 
     if (this.workerWarmupTimer !== null) {
@@ -306,19 +263,112 @@ class RenderLoop {
     this.activeVideo = null;
 
     renderer.clearSourceTexture();
+    renderer.destroy();
+  }
 
-    if (RenderLoop.workerInstance) {
-      this.workerTerminateCount += 1;
-      overlayLogger.info("ai-worker-terminated", {
-        workerTerminateCount: this.workerTerminateCount,
-        generation: this.generation,
-      });
+  disposeWorker(): void {
+    this.pendingImmediateInferenceGeneration = null;
+    this.aiTaskInFlight = false;
 
-      RenderLoop.workerInstance.terminate();
-      RenderLoop.workerInstance = null;
+    if (!RenderLoop.workerInstance) {
+      return;
     }
 
-    renderer.destroy();
+    this.workerTerminateCount += 1;
+    overlayLogger.info("ai-worker-terminated", {
+      workerTerminateCount: this.workerTerminateCount,
+      generation: this.generation,
+    });
+
+    RenderLoop.workerInstance.terminate();
+    RenderLoop.workerInstance = null;
+    RenderLoop.workerInitialized = false;
+    RenderLoop.workerInitializing = false;
+  }
+
+  private ensureWorkerInitialized(): void {
+    const worker = this.getWorker();
+
+    if (!worker || RenderLoop.workerInitialized || RenderLoop.workerInitializing) {
+      return;
+    }
+
+    RenderLoop.workerInitializing = true;
+    worker.postMessage({ type: "init" });
+  }
+
+  private async triggerAI(
+    loopGeneration: number,
+    isImmediate = false,
+  ): Promise<void> {
+    if (this.aiTaskInFlight || this.stopped || loopGeneration !== this.generation) {
+      return;
+    }
+
+    const currentWorker = this.getWorker();
+    if (!currentWorker) {
+      return;
+    }
+
+    if (!RenderLoop.workerInitialized) {
+      this.ensureWorkerInitialized();
+
+      if (isImmediate) {
+        this.pendingImmediateInferenceGeneration = loopGeneration;
+      }
+
+      return;
+    }
+
+    const video = this.activeVideo;
+    if (!video || video.readyState < 2 || video.paused || video.ended) {
+      return;
+    }
+
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+
+    if (!videoWidth || !videoHeight) {
+      return;
+    }
+
+    const targetSize = this.aiInputSize;
+    const sourceSize = Math.min(videoWidth, videoHeight);
+    const sourceX = (videoWidth - sourceSize) / 2;
+    const sourceY = (videoHeight - sourceSize) / 2;
+
+    this.aiTaskInFlight = true;
+    this.aiTaskStartCount += 1;
+    overlayLogger.verbose("ai-task-started", {
+      aiTaskStartCount: this.aiTaskStartCount,
+      generation: loopGeneration,
+      isImmediate,
+    });
+
+    try {
+      const bitmap = await createImageBitmap(video, sourceX, sourceY, sourceSize, sourceSize, {
+        resizeWidth: targetSize,
+        resizeHeight: targetSize,
+        resizeQuality: "medium",
+      });
+
+      if (this.stopped || loopGeneration !== this.generation || this.activeVideo !== video) {
+        bitmap.close();
+        this.aiTaskInFlight = false;
+        this.aiTaskCompleteCount += 1;
+        return;
+      }
+
+      currentWorker.postMessage({ type: "predict", bitmap, generation: loopGeneration }, [bitmap]);
+    } catch (err) {
+      overlayLogger.error("image-bitmap-create-failed", {
+        error: String(err),
+      });
+      if (loopGeneration === this.generation) {
+        this.aiTaskInFlight = false;
+        this.aiTaskCompleteCount += 1;
+      }
+    }
   }
 
   private describeVideo(video: HTMLVideoElement): Record<string, unknown> {
