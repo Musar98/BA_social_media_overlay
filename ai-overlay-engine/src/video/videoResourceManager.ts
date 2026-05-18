@@ -22,6 +22,8 @@ class VideoResourceManager {
     ReleasedVideoState
   >();
   private activeVideo: HTMLVideoElement | null = null;
+  private readonly retainedAttachedVideos: HTMLVideoElement[] = [];
+  private readonly retainedAttachedVideoLimit = 3;
 
   enforceSingleActiveVideo(activeVideo: HTMLVideoElement | null): void {
     if (!activeVideo) {
@@ -34,16 +36,27 @@ class VideoResourceManager {
     this.logVideoSnapshot("single-active-video-enforced", activeVideo);
 
     this.restoreVideo(activeVideo);
+    this.rememberAttachedVideo(activeVideo);
 
     if (previousActiveVideo && previousActiveVideo !== activeVideo) {
-      this.releaseVideo(previousActiveVideo);
+      this.softRetireVideo(previousActiveVideo);
+      this.rememberAttachedVideo(previousActiveVideo);
     }
+
+    this.releaseVideosOutsideRetention();
   }
 
   forgetActiveVideo(video: HTMLVideoElement | null): void {
     if (!video || this.activeVideo === video) {
       this.activeVideo = null;
     }
+
+    if (!video) {
+      this.retainedAttachedVideos.length = 0;
+      return;
+    }
+
+    this.removeAttachedVideo(video);
   }
 
   restoreVideo(video: HTMLVideoElement): void {
@@ -51,6 +64,8 @@ class VideoResourceManager {
 
     if (!state) {
       video.preload = video.preload || "auto";
+      this.play(video);
+      this.logVideoSnapshot("retained-video-reactivated", video);
       this.logVideoSnapshot("active-video-already-attached", video);
       return;
     }
@@ -104,6 +119,16 @@ class VideoResourceManager {
   }
 
   releaseVideo(video: HTMLVideoElement): void {
+    this.hardReleaseVideo(video);
+  }
+
+  private softRetireVideo(video: HTMLVideoElement): void {
+    this.pause(video);
+    video.style.opacity = "1";
+    this.logVideoSnapshot("previous-video-retained", video);
+  }
+
+  private hardReleaseVideo(video: HTMLVideoElement): void {
     if (!this.releasedVideos.has(video)) {
       this.releasedVideos.set(video, {
         src: video.currentSrc || video.src,
@@ -131,6 +156,41 @@ class VideoResourceManager {
 
     this.load(video);
     this.logVideoSnapshot("previous-video-released", video);
+  }
+
+  private rememberAttachedVideo(video: HTMLVideoElement): void {
+    this.removeAttachedVideo(video);
+    this.retainedAttachedVideos.unshift(video);
+  }
+
+  private removeAttachedVideo(video: HTMLVideoElement): void {
+    const index = this.retainedAttachedVideos.indexOf(video);
+
+    if (index >= 0) {
+      this.retainedAttachedVideos.splice(index, 1);
+    }
+  }
+
+  private releaseVideosOutsideRetention(): void {
+    for (let i = this.retainedAttachedVideos.length - 1; i >= 0; i--) {
+      const video = this.retainedAttachedVideos[i];
+
+      if (!document.contains(video)) {
+        this.retainedAttachedVideos.splice(i, 1);
+        this.hardReleaseVideo(video);
+      }
+    }
+
+    while (this.retainedAttachedVideos.length > this.retainedAttachedVideoLimit) {
+      const video = this.retainedAttachedVideos.pop();
+
+      if (video && video !== this.activeVideo) {
+        overlayLogger.info("retention-window-hard-release", {
+          retainedAttachedVideoLimit: this.retainedAttachedVideoLimit,
+        });
+        this.hardReleaseVideo(video);
+      }
+    }
   }
 
   private logVideoSnapshot(
