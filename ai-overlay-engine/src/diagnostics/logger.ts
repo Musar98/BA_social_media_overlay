@@ -1,7 +1,17 @@
 type LogPayload = Record<string, unknown>;
 
+export const VERBOSE_DIAGNOSTICS = false;
+
 class OverlayLogger {
   info(event: string, payload?: LogPayload): void {
+    console.info(this.format(event, payload));
+  }
+
+  verbose(event: string, payload?: LogPayload): void {
+    if (!VERBOSE_DIAGNOSTICS) {
+      return;
+    }
+
     console.info(this.format(event, payload));
   }
 

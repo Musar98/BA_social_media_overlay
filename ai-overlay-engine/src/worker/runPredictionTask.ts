@@ -61,7 +61,7 @@ class PredictionTask {
       const tInference = performance.now();
 
       // timing log for performance measurment
-      overlayLogger.info("ai-timing", {
+      overlayLogger.verbose("ai-timing", {
         init: tInit - t0,
         draw: tDraw - tInit,
         readPixels: tRead - tDraw,

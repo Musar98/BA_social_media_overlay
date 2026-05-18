@@ -55,6 +55,7 @@ describe("RenderLoop", () => {
 
   it("calls renderer.renderFrame when filter is enabled", async () => {
     UIState.filterEnabled = true;
+    (renderer.renderFrame as any).mockReturnValue({ width: 100, height: 100 });
     // Mock readyState to indicate video is ready
     Object.defineProperty(video, 'readyState', { value: 4 });
     Object.defineProperty(video, 'paused', { value: false });
@@ -66,6 +67,72 @@ describe("RenderLoop", () => {
     await new Promise(resolve => setTimeout(resolve, 10));
 
     expect(renderer.renderFrame).toHaveBeenCalled();
+    renderLoop.stop();
+  });
+
+  it("keeps the original video visible until the first filtered frame renders", async () => {
+    UIState.filterEnabled = true;
+    (renderer.renderFrame as any).mockReturnValue({ width: 0, height: 0 });
+    Object.defineProperty(video, "readyState", { value: 4 });
+    Object.defineProperty(video, "paused", { value: false });
+    Object.defineProperty(video, "ended", { value: false });
+
+    renderLoop.start(video, canvas);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(canvas.style.display).toBe("none");
+    expect(video.style.opacity).toBe("1");
+
+    renderLoop.stop();
+  });
+
+  it("shows the filtered canvas after the first valid frame renders", async () => {
+    UIState.filterEnabled = true;
+    (renderer.renderFrame as any).mockReturnValue({ width: 100, height: 100 });
+    Object.defineProperty(video, "readyState", { value: 4 });
+    Object.defineProperty(video, "paused", { value: false });
+    Object.defineProperty(video, "ended", { value: false });
+
+    renderLoop.start(video, canvas);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(canvas.style.display).toBe("block");
+    expect(video.style.opacity).toBe("0");
+
+    renderLoop.stop();
+  });
+
+  it("does not rewrite visibility styles after the filtered canvas is already visible", async () => {
+    UIState.filterEnabled = true;
+    (renderer.renderFrame as any).mockReturnValue({ width: 100, height: 100 });
+    Object.defineProperty(video, "readyState", { value: 4 });
+    Object.defineProperty(video, "paused", { value: false });
+    Object.defineProperty(video, "ended", { value: false });
+
+    const displaySetter = vi.fn();
+    const opacitySetter = vi.fn();
+
+    Object.defineProperty(canvas.style, "display", {
+      configurable: true,
+      set: displaySetter,
+      get: () => "block",
+    });
+
+    Object.defineProperty(video.style, "opacity", {
+      configurable: true,
+      set: opacitySetter,
+      get: () => "0",
+    });
+
+    renderLoop.start(video, canvas);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(displaySetter).toHaveBeenCalledTimes(2);
+    expect(opacitySetter).toHaveBeenCalledTimes(2);
+
     renderLoop.stop();
   });
 

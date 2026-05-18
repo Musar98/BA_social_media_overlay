@@ -3,6 +3,8 @@ import {
   MAX_PENDING_GPU_QUERIES,
   TONE_CURVE_STEPS,
 } from "./Constants";
+import { SourceCanvasDimensionCache } from "../renderer/canvasDimensions";
+import { SHARPEN_ENABLED } from "./FeatureFlags";
 
 const DEFAULT_SMOOTHING_ENABLED = true;
 const DEFAULT_SMOOTHING_STIFFNESS = 0.05;
@@ -55,6 +57,7 @@ export class ImageTransformRenderer {
   private readonly texture: WebGLTexture;
   private textureWidth = 0;
   private textureHeight = 0;
+  private readonly canvasDimensions = new SourceCanvasDimensionCache();
 
   private readonly metricsEnabled: boolean;
   private readonly metricsCallback: ((m: ImageTransformMetrics) => void) | null;
@@ -576,31 +579,6 @@ export class ImageTransformRenderer {
     return width > 0 && height > 0;
   }
 
-  private static getCanvasDimensions(
-    source: TexImageSource,
-    width: number,
-    height: number,
-  ): { width: number; height: number } {
-    if (
-      "getBoundingClientRect" in source &&
-      typeof window !== "undefined"
-    ) {
-      const rect = (source as Element).getBoundingClientRect();
-      const devicePixelRatio = window.devicePixelRatio || 1;
-      const displayWidth = Math.round(rect.width * devicePixelRatio);
-      const displayHeight = Math.round(rect.height * devicePixelRatio);
-
-      if (displayWidth > 0 && displayHeight > 0) {
-        return {
-          width: displayWidth,
-          height: displayHeight,
-        };
-      }
-    }
-
-    return { width, height };
-  }
-
   private clearCanvas(): void {
     this.gl.clearColor(0, 0, 0, 1);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
@@ -892,7 +870,9 @@ export class ImageTransformRenderer {
       gl.uniform2f(uniforms.imageSize, sourceWidth, sourceHeight);
     }
 
-    if (uniforms.sharp) gl.uniform1f(uniforms.sharp, params.sharp);
+    if (uniforms.sharp) {
+      gl.uniform1f(uniforms.sharp, SHARPEN_ENABLED ? params.sharp : 0);
+    }
     if (uniforms.exposure) gl.uniform1f(uniforms.exposure, params.exposure);
     if (uniforms.contrast) gl.uniform1f(uniforms.contrast, params.contrast);
     if (uniforms.saturation) {
@@ -928,11 +908,7 @@ export class ImageTransformRenderer {
     const { width: sourceWidth, height: sourceHeight } =
       ImageTransformRenderer.getSourceDimensions(source);
     const { width: canvasWidth, height: canvasHeight } =
-      ImageTransformRenderer.getCanvasDimensions(
-        source,
-        sourceWidth,
-        sourceHeight,
-      );
+      this.canvasDimensions.get(source, sourceWidth, sourceHeight);
 
     const targetParams = this.normalizeParams(
       params,
@@ -947,7 +923,6 @@ export class ImageTransformRenderer {
 
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
-    this.clearCanvas();
     this.uploadSourceToTexture(source, sourceWidth, sourceHeight);
 
     this.gl.useProgram(this.program);
@@ -1037,6 +1012,7 @@ export class ImageTransformRenderer {
     this.gl.deleteBuffer(this.vbo);
     this.gl.deleteVertexArray(this.vao);
     this.gl.deleteProgram(this.program);
+    this.canvasDimensions.dispose();
 
     this.canvas.width = 1;
     this.canvas.height = 1;

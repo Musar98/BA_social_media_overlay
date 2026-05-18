@@ -27,8 +27,11 @@ class Renderer {
     );
   }
 
-  renderFrame(source: TexImageSource, params: any): void {
-    this.instance?.renderFrame(source, params);
+  renderFrame(
+    source: TexImageSource,
+    params: any,
+  ): { width: number; height: number } | null {
+    return this.instance?.renderFrame(source, params) ?? null;
   }
 
   clearSourceTexture(): void {

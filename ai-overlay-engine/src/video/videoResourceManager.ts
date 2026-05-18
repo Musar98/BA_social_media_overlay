@@ -139,7 +139,7 @@ class VideoResourceManager {
   ): void {
     const videos = Array.from(document.querySelectorAll("video"));
 
-    overlayLogger.info("video-resources", {
+    overlayLogger.verbose("video-resources", {
       event,
       videoCount: videos.length,
       activeIndex: videos.indexOf(activeVideo),

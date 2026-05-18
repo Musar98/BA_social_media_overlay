@@ -68,7 +68,7 @@ class RenderLoop {
         if (aiParams || error) {
           this.aiTaskInFlight = false;
           this.aiTaskCompleteCount += 1;
-          overlayLogger.info("ai-task-completed", {
+          overlayLogger.verbose("ai-task-completed", {
             aiTaskCompleteCount: this.aiTaskCompleteCount,
             generation: this.generation,
             hasError: Boolean(error),
@@ -110,6 +110,8 @@ class RenderLoop {
     let frameCount = 0;
 
     const worker = this.getWorker();
+    let hasRenderedFilteredFrame = false;
+    let canvasVisible: boolean | null = null;
 
     const triggerAI = async () => {
       if (this.aiTaskInFlight || this.stopped || loopGeneration !== this.generation) {
@@ -135,7 +137,7 @@ class RenderLoop {
 
       this.aiTaskInFlight = true;
       this.aiTaskStartCount += 1;
-      overlayLogger.info("ai-task-started", {
+      overlayLogger.verbose("ai-task-started", {
         aiTaskStartCount: this.aiTaskStartCount,
         generation: this.generation,
       });
@@ -168,7 +170,15 @@ class RenderLoop {
 
     let lastFilterEnabled = UIState.filterEnabled;
     const updateVisibility = (enabled: boolean) => {
-      if (enabled) {
+      const shouldShowCanvas = enabled && hasRenderedFilteredFrame;
+
+      if (canvasVisible === shouldShowCanvas) {
+        return;
+      }
+
+      canvasVisible = shouldShowCanvas;
+
+      if (shouldShowCanvas) {
         canvas.style.display = "block";
         video.style.opacity = "0";
       } else {
@@ -202,7 +212,12 @@ class RenderLoop {
             triggerAI();
           }
 
-          renderer.renderFrame(video, AIState.params);
+          const renderResult = renderer.renderFrame(video, AIState.params);
+
+          if (renderResult?.width && renderResult.height) {
+            hasRenderedFilteredFrame = true;
+            updateVisibility(lastFilterEnabled);
+          }
         }
       }
 
