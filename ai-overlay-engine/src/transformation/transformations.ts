@@ -53,6 +53,8 @@ export class ImageTransformRenderer {
   private readonly vertexCount: number;
   private readonly uniforms: Record<string, WebGLUniformLocation | null>;
   private readonly texture: WebGLTexture;
+  private textureWidth = 0;
+  private textureHeight = 0;
 
   private readonly metricsEnabled: boolean;
   private readonly metricsCallback: ((m: ImageTransformMetrics) => void) | null;
@@ -574,20 +576,74 @@ export class ImageTransformRenderer {
     return width > 0 && height > 0;
   }
 
+  private static getCanvasDimensions(
+    source: TexImageSource,
+    width: number,
+    height: number,
+  ): { width: number; height: number } {
+    if (
+      "getBoundingClientRect" in source &&
+      typeof window !== "undefined"
+    ) {
+      const rect = (source as Element).getBoundingClientRect();
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      const displayWidth = Math.round(rect.width * devicePixelRatio);
+      const displayHeight = Math.round(rect.height * devicePixelRatio);
+
+      if (displayWidth > 0 && displayHeight > 0) {
+        return {
+          width: displayWidth,
+          height: displayHeight,
+        };
+      }
+    }
+
+    return { width, height };
+  }
+
   private clearCanvas(): void {
     this.gl.clearColor(0, 0, 0, 1);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 
-  private uploadSourceToTexture(source: TexImageSource): void {
+  private allocateSourceTexture(width: number, height: number): void {
     this.gl.activeTexture(this.gl.TEXTURE0);
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
-    this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, false);
 
     this.gl.texImage2D(
       this.gl.TEXTURE_2D,
       0,
       this.gl.RGBA,
+      width,
+      height,
+      0,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      null,
+    );
+
+    this.textureWidth = width;
+    this.textureHeight = height;
+  }
+
+  private uploadSourceToTexture(
+    source: TexImageSource,
+    width: number,
+    height: number,
+  ): void {
+    this.gl.activeTexture(this.gl.TEXTURE0);
+    this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+    this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, false);
+
+    if (this.textureWidth !== width || this.textureHeight !== height) {
+      this.allocateSourceTexture(width, height);
+    }
+
+    this.gl.texSubImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      0,
+      0,
       this.gl.RGBA,
       this.gl.UNSIGNED_BYTE,
       source,
@@ -871,6 +927,12 @@ export class ImageTransformRenderer {
 
     const { width: sourceWidth, height: sourceHeight } =
       ImageTransformRenderer.getSourceDimensions(source);
+    const { width: canvasWidth, height: canvasHeight } =
+      ImageTransformRenderer.getCanvasDimensions(
+        source,
+        sourceWidth,
+        sourceHeight,
+      );
 
     const targetParams = this.normalizeParams(
       params,
@@ -880,13 +942,13 @@ export class ImageTransformRenderer {
 
     const smoothedParams = this.getSmoothedParams(targetParams);
 
-    if (this.canvas.width !== sourceWidth) this.canvas.width = sourceWidth;
-    if (this.canvas.height !== sourceHeight) this.canvas.height = sourceHeight;
+    if (this.canvas.width !== canvasWidth) this.canvas.width = canvasWidth;
+    if (this.canvas.height !== canvasHeight) this.canvas.height = canvasHeight;
 
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
     this.clearCanvas();
-    this.uploadSourceToTexture(source);
+    this.uploadSourceToTexture(source, sourceWidth, sourceHeight);
 
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
@@ -903,8 +965,6 @@ export class ImageTransformRenderer {
       gpuQueryState.didBegin,
       frameId,
     );
-
-    this.gl.flush();
 
     const drawEndMs = ImageTransformRenderer.nowMs();
 
@@ -942,7 +1002,31 @@ export class ImageTransformRenderer {
     this.velocityParams = null;
   }
 
+  clearSourceTexture(): void {
+    this.gl.activeTexture(this.gl.TEXTURE0);
+    this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+
+    const clearPixel = new Uint8Array([0, 0, 0, 255]);
+
+    this.gl.texImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      this.gl.RGBA,
+      1,
+      1,
+      0,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      clearPixel,
+    );
+
+    this.textureWidth = 1;
+    this.textureHeight = 1;
+  }
+
   destroy(): void {
+    this.clearSourceTexture();
+
     for (let i = 0; i < this.pendingGpuQueries.length; i++) {
       this.gl.deleteQuery(this.pendingGpuQueries[i].query);
     }
@@ -953,6 +1037,9 @@ export class ImageTransformRenderer {
     this.gl.deleteBuffer(this.vbo);
     this.gl.deleteVertexArray(this.vao);
     this.gl.deleteProgram(this.program);
+
+    this.canvas.width = 1;
+    this.canvas.height = 1;
 
     const ext = this.gl.getExtension("WEBGL_lose_context");
     ext?.loseContext();

@@ -4,9 +4,26 @@ import { renderer } from "./renderer";
 const AI_WORKER_PATH =
   "/static_resources/webworker_v1/init_script/ai-worker.iife.js";
 
+type VideoWithFrameCallback = HTMLVideoElement & {
+  requestVideoFrameCallback?: (callback: () => void) => number;
+  cancelVideoFrameCallback?: (handle: number) => void;
+};
+
 class RenderLoop {
   private animationId: number | null = null;
+  private videoFrameCallbackId: number | null = null;
   private static workerInstance: Worker | null = null;
+  private activeVideo: HTMLVideoElement | null = null;
+  private stopped = true;
+  private generation = 0;
+  private aiTaskInFlight = false;
+  private workerReady = false;
+  private loopStartCount = 0;
+  private loopStopCount = 0;
+  private workerCreateCount = 0;
+  private workerTerminateCount = 0;
+  private aiTaskStartCount = 0;
+  private aiTaskCompleteCount = 0;
 
   // MobileNetV4 backbone input size
   private readonly aiInputSize = 224;
@@ -17,26 +34,50 @@ class RenderLoop {
     }
 
     try {
-      RenderLoop.workerInstance = new Worker(AI_WORKER_PATH);
-      RenderLoop.workerInstance.onmessage = (event) => {
+      const worker = new Worker(AI_WORKER_PATH);
+      const workerGeneration = this.generation;
+
+      RenderLoop.workerInstance = worker;
+      this.workerCreateCount += 1;
+      console.info("[ai-overlay] AI worker created", {
+        workerCreateCount: this.workerCreateCount,
+        generation: this.generation,
+      });
+
+      worker.onmessage = (event) => {
+        if (worker !== RenderLoop.workerInstance) {
+          return;
+        }
+
         const { aiParams, error, type } = event.data;
 
         if (error) {
           console.error("AI Worker error:", error);
         }
 
-        if (aiParams) {
+        if (type === "initialized") {
+          this.workerReady = true;
+          console.info("AI Worker pre-warmed and ready");
+        }
+
+        if (aiParams && !this.stopped && workerGeneration === this.generation) {
           AIState.params = aiParams;
         }
 
-        if (type === "initialized") {
-          console.info("AI Worker pre-warmed and ready");
+        if (aiParams || error) {
+          this.aiTaskInFlight = false;
+          this.aiTaskCompleteCount += 1;
+          console.info("[ai-overlay] AI task completed", {
+            aiTaskCompleteCount: this.aiTaskCompleteCount,
+            generation: this.generation,
+            hasError: Boolean(error),
+          });
         }
       };
 
       // Signal initialization/warmup
-      RenderLoop.workerInstance.postMessage({ type: "init" });
-      return RenderLoop.workerInstance;
+      worker.postMessage({ type: "init" });
+      return worker;
     } catch (err) {
       console.error("Failed to create AI worker:", err);
       return null;
@@ -48,14 +89,34 @@ class RenderLoop {
     canvas: HTMLCanvasElement,
     aiFrameInterval = 60,
   ): void {
+    this.stop();
+
+    this.activeVideo = video;
+    this.stopped = false;
+    this.generation += 1;
+    this.aiTaskInFlight = false;
+    this.workerReady = false;
+
+    const loopGeneration = this.generation;
+    this.loopStartCount += 1;
+    console.info("[ai-overlay] render loop start", {
+      loopStartCount: this.loopStartCount,
+      generation: this.generation,
+      video: this.describeVideo(video),
+    });
+
     renderer.init(canvas);
     let frameCount = 0;
 
     const worker = this.getWorker();
 
     const triggerAI = async () => {
+      if (this.aiTaskInFlight || this.stopped || loopGeneration !== this.generation) {
+        return;
+      }
+
       const currentWorker = this.getWorker();
-      if (!currentWorker || video.readyState < 2) {
+      if (!currentWorker || !this.workerReady || video.readyState < 2) {
         return;
       }
 
@@ -71,6 +132,13 @@ class RenderLoop {
       const sourceX = (videoWidth - sourceSize) / 2;
       const sourceY = (videoHeight - sourceSize) / 2;
 
+      this.aiTaskInFlight = true;
+      this.aiTaskStartCount += 1;
+      console.info("[ai-overlay] AI task started", {
+        aiTaskStartCount: this.aiTaskStartCount,
+        generation: this.generation,
+      });
+
       try {
         const bitmap = await createImageBitmap(video, sourceX, sourceY, sourceSize, sourceSize, {
           resizeWidth: targetSize,
@@ -78,9 +146,20 @@ class RenderLoop {
           resizeQuality: "medium",
         });
 
+        if (this.stopped || loopGeneration !== this.generation || this.activeVideo !== video) {
+          bitmap.close();
+          this.aiTaskInFlight = false;
+          this.aiTaskCompleteCount += 1;
+          return;
+        }
+
         currentWorker.postMessage({ bitmap }, [bitmap]);
       } catch (err) {
         console.error("Failed to create ImageBitmap:", err);
+        if (loopGeneration === this.generation) {
+          this.aiTaskInFlight = false;
+          this.aiTaskCompleteCount += 1;
+        }
       }
     };
 
@@ -98,6 +177,10 @@ class RenderLoop {
     updateVisibility(lastFilterEnabled);
 
     const loop = () => {
+      if (this.stopped || loopGeneration !== this.generation) {
+        return;
+      }
+
       if (!document.contains(video)) {
         this.stop();
         return;
@@ -120,23 +203,77 @@ class RenderLoop {
         }
       }
 
+      scheduleNextFrame();
+    };
+
+    const scheduleNextFrame = () => {
+      if (this.stopped || loopGeneration !== this.generation) {
+        return;
+      }
+
+      const frameVideo = video as VideoWithFrameCallback;
+
+      if (typeof frameVideo.requestVideoFrameCallback === "function") {
+        this.videoFrameCallbackId = frameVideo.requestVideoFrameCallback(loop);
+        return;
+      }
+
       this.animationId = requestAnimationFrame(loop);
     };
 
-    loop();
+    scheduleNextFrame();
   }
 
   stop(): void {
+    this.stopped = true;
+    this.generation += 1;
+    this.aiTaskInFlight = false;
+    this.workerReady = false;
+    this.loopStopCount += 1;
+
+    console.info("[ai-overlay] render loop stop", {
+      loopStopCount: this.loopStopCount,
+      generation: this.generation,
+    });
+
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
 
-    this.animationId = null;
+    if (this.videoFrameCallbackId !== null && this.activeVideo) {
+      const frameVideo = this.activeVideo as VideoWithFrameCallback;
+      frameVideo.cancelVideoFrameCallback?.(this.videoFrameCallbackId);
+    }
 
-    // We no longer terminate the worker here to persist ONNX state
-    // RenderLoop.workerInstance?.terminate();
+    this.animationId = null;
+    this.videoFrameCallbackId = null;
+    this.activeVideo = null;
+
+    renderer.clearSourceTexture();
+
+    if (RenderLoop.workerInstance) {
+      this.workerTerminateCount += 1;
+      console.info("[ai-overlay] AI worker terminated", {
+        workerTerminateCount: this.workerTerminateCount,
+        generation: this.generation,
+      });
+
+      RenderLoop.workerInstance.terminate();
+      RenderLoop.workerInstance = null;
+    }
 
     renderer.destroy();
+  }
+
+  private describeVideo(video: HTMLVideoElement): Record<string, unknown> {
+    return {
+      readyState: video.readyState,
+      paused: video.paused,
+      ended: video.ended,
+      width: video.videoWidth,
+      height: video.videoHeight,
+      hasSrc: Boolean(video.currentSrc || video.src || video.srcObject),
+    };
   }
 }
 

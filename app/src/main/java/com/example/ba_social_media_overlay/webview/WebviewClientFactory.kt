@@ -1,5 +1,7 @@
 package com.example.ba_social_media_overlay.webview
 
+import android.util.Log
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -12,7 +14,8 @@ object WebViewClientFactory {
     private const val ONNX_PREFIX = "/_onnx/"
 
     fun create(
-        assetRouting: AssetRouting
+        assetRouting: AssetRouting,
+        onRenderProcessGone: ((WebView, RenderProcessGoneDetail) -> Unit)? = null
     ): WebViewClient {
 
         return object : WebViewClient() {
@@ -42,6 +45,23 @@ object WebViewClientFactory {
                     lastInjectedUrl = url
                     AiOverlayInjector.inject(view)
                 }
+            }
+
+            override fun onRenderProcessGone(
+                view: WebView,
+                detail: RenderProcessGoneDetail
+            ): Boolean {
+                Log.e(
+                    "InstagramWebView",
+                    "Renderer gone. didCrash=${detail.didCrash()}, priority=${detail.rendererPriorityAtExit()}"
+                )
+
+                WebViewRegistry.disposeAll("render-process-gone")
+                onRenderProcessGone?.invoke(view, detail)
+
+                Log.e("InstagramWebView", "Renderer gone handled by WebViewClient")
+
+                return true
             }
         }
     }

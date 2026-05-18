@@ -127,7 +127,8 @@ vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
     return clamp(mix(degenerate, c, sharpValue), 0.0f, 1.0f);
 }
 
-// Converts canvas UV coordinates into image UV coordinates.
+// Converts canvas UV coordinates into image UV coordinates using cover semantics,
+// matching how full-screen Reels videos fill their viewport.
 bool mapCanvasUVToImageUV(vec2 canvasUV, out vec2 imageUV) {
     float canvasAspect = u_canvasSize.x / u_canvasSize.y;
     float imageAspect = u_imageSize.x / u_imageSize.y;
@@ -135,18 +136,12 @@ bool mapCanvasUVToImageUV(vec2 canvasUV, out vec2 imageUV) {
     vec2 scale = vec2(1.0f);
 
     if(imageAspect > canvasAspect) {
-        scale.y = canvasAspect / imageAspect;
+        scale.x = canvasAspect / imageAspect;
     } else {
-        scale.x = imageAspect / canvasAspect;
+        scale.y = imageAspect / canvasAspect;
     }
 
-    vec2 uv = (canvasUV - 0.5f) / scale + 0.5f;
-
-    if(uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) {
-        return false;
-    }
-
-    imageUV = uv;
+    imageUV = (canvasUV - 0.5f) * scale + 0.5f;
     return true;
 }
 
@@ -171,10 +166,7 @@ vec3 applyOptimizedEffects(vec2 uv, vec2 texel) {
 void main() {
     vec2 imageUV;
 
-    if(!mapCanvasUVToImageUV(v_uv, imageUV)) {
-        outColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        return;
-    }
+    mapCanvasUVToImageUV(v_uv, imageUV);
 
     vec3 color = applyOptimizedEffects(imageUV, u_texelSize);
     outColor = vec4(clamp(color, 0.0f, 1.0f), 1.0f);
