@@ -1,5 +1,6 @@
 import { onnxRuntime } from "../ai/ONNXRuntime";
 import { runPrediction } from "../ai/AIPredictor";
+import { overlayLogger } from "../diagnostics/logger";
 
 class PredictionTask {
   private canvas: OffscreenCanvas | null = null;
@@ -60,13 +61,13 @@ class PredictionTask {
       const tInference = performance.now();
 
       // timing log for performance measurment
-      console.info("AI timing", JSON.stringify({
+      overlayLogger.info("ai-timing", {
         init: tInit - t0,
         draw: tDraw - tInit,
         readPixels: tRead - tDraw,
         inference: tInference - tRead,
         total: tInference - t0,
-      }));
+      });
 
       self.postMessage({ aiParams });
     } catch (err) {

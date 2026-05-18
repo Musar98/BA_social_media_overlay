@@ -1,6 +1,7 @@
 import { ImageTransformRenderer } from "../transformation/transformations";
 import { CLIP_TO_UV } from "../transformation/ClipToUv";
 import { IMAGE_ADJUSTMENTS_PIPELINE } from "../transformation/ImageAdjustmentsPipeline";
+import { overlayLogger } from "../diagnostics/logger";
 
 class Renderer {
   private instance: ImageTransformRenderer | null = null;
@@ -14,7 +15,7 @@ class Renderer {
     }
 
     this.createCount += 1;
-    console.info("[ai-overlay] renderer created", {
+    overlayLogger.info("renderer-created", {
       createCount: this.createCount,
     });
 
@@ -34,7 +35,7 @@ class Renderer {
     if (!this.instance) return;
 
     this.clearSourceCount += 1;
-    console.info("[ai-overlay] renderer source texture cleared", {
+    overlayLogger.info("renderer-source-texture-cleared", {
       clearSourceCount: this.clearSourceCount,
     });
 
@@ -45,7 +46,7 @@ class Renderer {
     if (!this.instance) return;
 
     this.destroyCount += 1;
-    console.info("[ai-overlay] renderer destroyed", {
+    overlayLogger.info("renderer-destroyed", {
       destroyCount: this.destroyCount,
     });
 

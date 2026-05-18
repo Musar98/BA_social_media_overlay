@@ -1,3 +1,5 @@
+import { overlayLogger } from "../diagnostics/logger";
+
 type SourceChildState = {
   element: HTMLSourceElement;
   src: string | null;
@@ -137,7 +139,7 @@ class VideoResourceManager {
   ): void {
     const videos = Array.from(document.querySelectorAll("video"));
 
-    console.info("[ai-overlay] video resources", {
+    overlayLogger.info("video-resources", {
       event,
       videoCount: videos.length,
       activeIndex: videos.indexOf(activeVideo),

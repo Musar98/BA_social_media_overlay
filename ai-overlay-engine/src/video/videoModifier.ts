@@ -1,6 +1,7 @@
 import { overlayCanvasFactory } from "../ui/canvas";
 import { renderLoop } from "../renderer/renderLoop";
 import { videoResourceManager } from "./videoResourceManager";
+import { overlayLogger } from "../diagnostics/logger";
 
 class VideoModifier {
   private currentVideo: HTMLVideoElement | null = null;
@@ -21,7 +22,7 @@ class VideoModifier {
     const generation = this.switchGeneration;
     videoResourceManager.enforceSingleActiveVideo(video);
 
-    console.info("[ai-overlay] video switch cleanup gap start", {
+    overlayLogger.info("video-switch-cleanup-gap-start", {
       cleanupGapMs: this.cleanupGapMs,
       generation,
     });
@@ -29,7 +30,7 @@ class VideoModifier {
     await new Promise((resolve) => setTimeout(resolve, this.cleanupGapMs));
 
     if (generation !== this.switchGeneration || !document.contains(video)) {
-      console.info("[ai-overlay] video switch abandoned", {
+      overlayLogger.info("video-switch-abandoned", {
         generation,
         isStale: generation !== this.switchGeneration,
         inDocument: document.contains(video),

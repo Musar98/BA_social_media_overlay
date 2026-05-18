@@ -1,5 +1,6 @@
 import { UIState, AIState } from "../state/state";
 import { renderer } from "./renderer";
+import { overlayLogger } from "../diagnostics/logger";
 
 const AI_WORKER_PATH =
   "/static_resources/webworker_v1/init_script/ai-worker.iife.js";
@@ -39,7 +40,7 @@ class RenderLoop {
 
       RenderLoop.workerInstance = worker;
       this.workerCreateCount += 1;
-      console.info("[ai-overlay] AI worker created", {
+      overlayLogger.info("ai-worker-created", {
         workerCreateCount: this.workerCreateCount,
         generation: this.generation,
       });
@@ -52,12 +53,12 @@ class RenderLoop {
         const { aiParams, error, type } = event.data;
 
         if (error) {
-          console.error("AI Worker error:", error);
+          overlayLogger.error("ai-worker-error", { error });
         }
 
         if (type === "initialized") {
           this.workerReady = true;
-          console.info("AI Worker pre-warmed and ready");
+          overlayLogger.info("ai-worker-ready");
         }
 
         if (aiParams && !this.stopped && workerGeneration === this.generation) {
@@ -67,7 +68,7 @@ class RenderLoop {
         if (aiParams || error) {
           this.aiTaskInFlight = false;
           this.aiTaskCompleteCount += 1;
-          console.info("[ai-overlay] AI task completed", {
+          overlayLogger.info("ai-task-completed", {
             aiTaskCompleteCount: this.aiTaskCompleteCount,
             generation: this.generation,
             hasError: Boolean(error),
@@ -79,7 +80,7 @@ class RenderLoop {
       worker.postMessage({ type: "init" });
       return worker;
     } catch (err) {
-      console.error("Failed to create AI worker:", err);
+      overlayLogger.error("ai-worker-create-failed", { error: String(err) });
       return null;
     }
   }
@@ -99,7 +100,7 @@ class RenderLoop {
 
     const loopGeneration = this.generation;
     this.loopStartCount += 1;
-    console.info("[ai-overlay] render loop start", {
+    overlayLogger.info("render-loop-start", {
       loopStartCount: this.loopStartCount,
       generation: this.generation,
       video: this.describeVideo(video),
@@ -134,7 +135,7 @@ class RenderLoop {
 
       this.aiTaskInFlight = true;
       this.aiTaskStartCount += 1;
-      console.info("[ai-overlay] AI task started", {
+      overlayLogger.info("ai-task-started", {
         aiTaskStartCount: this.aiTaskStartCount,
         generation: this.generation,
       });
@@ -155,7 +156,9 @@ class RenderLoop {
 
         currentWorker.postMessage({ bitmap }, [bitmap]);
       } catch (err) {
-        console.error("Failed to create ImageBitmap:", err);
+        overlayLogger.error("image-bitmap-create-failed", {
+          error: String(err),
+        });
         if (loopGeneration === this.generation) {
           this.aiTaskInFlight = false;
           this.aiTaskCompleteCount += 1;
@@ -231,7 +234,7 @@ class RenderLoop {
     this.workerReady = false;
     this.loopStopCount += 1;
 
-    console.info("[ai-overlay] render loop stop", {
+    overlayLogger.info("render-loop-stop", {
       loopStopCount: this.loopStopCount,
       generation: this.generation,
     });
@@ -253,7 +256,7 @@ class RenderLoop {
 
     if (RenderLoop.workerInstance) {
       this.workerTerminateCount += 1;
-      console.info("[ai-overlay] AI worker terminated", {
+      overlayLogger.info("ai-worker-terminated", {
         workerTerminateCount: this.workerTerminateCount,
         generation: this.generation,
       });
