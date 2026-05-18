@@ -1,6 +1,6 @@
 type LogPayload = Record<string, unknown>;
 
-export const VERBOSE_DIAGNOSTICS = false;
+export const VERBOSE_DIAGNOSTICS = true;
 
 class OverlayLogger {
   info(event: string, payload?: LogPayload): void {
