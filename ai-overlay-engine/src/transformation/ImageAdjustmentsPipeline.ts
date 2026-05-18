@@ -1,5 +1,6 @@
 export const IMAGE_ADJUSTMENTS_PIPELINE = `#version 300 es
 precision highp float;
+precision highp int;
 
 // Interpolated UV coordinates from the vertex shader.
 in vec2 v_uv;
@@ -18,6 +19,9 @@ uniform vec2 u_canvasSize;
 
 // Size of the source image in pixels.
 uniform vec2 u_imageSize;
+
+// 0 = cover, 1 = contain.
+uniform int u_fitMode;
 
 // User-controlled adjustment parameters.
 uniform float u_sharp;       // Edge-based sharpening strength
@@ -127,11 +131,34 @@ vec3 applySharpen(vec3 c, vec2 uv, vec2 texel, float sharpValue) {
     return clamp(mix(degenerate, c, sharpValue), 0.0f, 1.0f);
 }
 
-// Converts canvas UV coordinates into image UV coordinates using cover semantics,
-// matching how full-screen Reels videos fill their viewport.
+// Converts canvas UV coordinates into image UV coordinates.
 bool mapCanvasUVToImageUV(vec2 canvasUV, out vec2 imageUV) {
     float canvasAspect = u_canvasSize.x / u_canvasSize.y;
     float imageAspect = u_imageSize.x / u_imageSize.y;
+
+    if(u_fitMode == 1) {
+        vec2 fitSize = vec2(1.0f);
+
+        if(imageAspect > canvasAspect) {
+            fitSize.y = canvasAspect / imageAspect;
+        } else {
+            fitSize.x = imageAspect / canvasAspect;
+        }
+
+        vec2 fitMin = (vec2(1.0f) - fitSize) * 0.5f;
+        vec2 fitMax = fitMin + fitSize;
+
+        if(
+            canvasUV.x < fitMin.x || canvasUV.x > fitMax.x ||
+            canvasUV.y < fitMin.y || canvasUV.y > fitMax.y
+        ) {
+            imageUV = vec2(0.5f);
+            return false;
+        }
+
+        imageUV = (canvasUV - fitMin) / fitSize;
+        return true;
+    }
 
     vec2 scale = vec2(1.0f);
 
@@ -166,7 +193,10 @@ vec3 applyOptimizedEffects(vec2 uv, vec2 texel) {
 void main() {
     vec2 imageUV;
 
-    mapCanvasUVToImageUV(v_uv, imageUV);
+    if(!mapCanvasUVToImageUV(v_uv, imageUV)) {
+        outColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        return;
+    }
 
     vec3 color = applyOptimizedEffects(imageUV, u_texelSize);
     outColor = vec4(clamp(color, 0.0f, 1.0f), 1.0f);

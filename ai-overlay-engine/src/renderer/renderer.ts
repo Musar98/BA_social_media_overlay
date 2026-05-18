@@ -1,4 +1,8 @@
-import { ImageTransformRenderer } from "../transformation/transformations";
+import {
+  ImageTransformRenderer,
+  type RenderFrameOptions,
+  type RenderFrameResult,
+} from "../transformation/transformations";
 import { CLIP_TO_UV } from "../transformation/ClipToUv";
 import { IMAGE_ADJUSTMENTS_PIPELINE } from "../transformation/ImageAdjustmentsPipeline";
 import { overlayLogger } from "../diagnostics/logger";
@@ -30,8 +34,9 @@ class Renderer {
   renderFrame(
     source: TexImageSource,
     params: any,
-  ): { width: number; height: number } | null {
-    return this.instance?.renderFrame(source, params) ?? null;
+    options?: RenderFrameOptions,
+  ): RenderFrameResult | null {
+    return this.instance?.renderFrame(source, params, options) ?? null;
   }
 
   clearSourceTexture(): void {

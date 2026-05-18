@@ -41,6 +41,7 @@ describe("RenderLoop", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (renderer.renderFrame as any).mockReset();
     mockWorkers.length = 0;
     video = document.createElement("video");
     canvas = document.createElement("canvas");
@@ -77,7 +78,11 @@ describe("RenderLoop", () => {
 
   it("calls renderer.renderFrame when filter is enabled", async () => {
     UIState.filterEnabled = true;
-    (renderer.renderFrame as any).mockReturnValue({ width: 100, height: 100 });
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 100,
+      height: 100,
+      drawn: true,
+    });
     // Mock readyState to indicate video is ready
     Object.defineProperty(video, 'readyState', { value: 4 });
     Object.defineProperty(video, 'paused', { value: false });
@@ -92,9 +97,13 @@ describe("RenderLoop", () => {
     renderLoop.stop();
   });
 
-  it("shows the overlay immediately when filter is enabled", async () => {
+  it("keeps native video visible until the first valid overlay frame", async () => {
     UIState.filterEnabled = true;
-    (renderer.renderFrame as any).mockReturnValue({ width: 0, height: 0 });
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 0,
+      height: 0,
+      drawn: false,
+    });
     Object.defineProperty(video, "readyState", { value: 4 });
     Object.defineProperty(video, "paused", { value: false });
     Object.defineProperty(video, "ended", { value: false });
@@ -102,6 +111,54 @@ describe("RenderLoop", () => {
     renderLoop.start(video, canvas);
 
     await new Promise(resolve => setTimeout(resolve, 100));
+
+    expect(canvas.style.display).toBe("none");
+    expect(video.style.opacity).toBe("1");
+
+    renderLoop.stop();
+  });
+
+  it("reveals the overlay after the first valid overlay frame", async () => {
+    UIState.filterEnabled = true;
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 100,
+      height: 100,
+      drawn: true,
+    });
+    Object.defineProperty(video, "readyState", { value: 4 });
+    Object.defineProperty(video, "paused", { value: false });
+    Object.defineProperty(video, "ended", { value: false });
+
+    renderLoop.start(video, canvas);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(canvas.style.display).toBe("block");
+    expect(video.style.opacity).toBe("0");
+
+    renderLoop.stop();
+  });
+
+  it("keeps the revealed overlay visible when a later frame is not drawn", async () => {
+    UIState.filterEnabled = true;
+    (renderer.renderFrame as any)
+      .mockReturnValueOnce({
+        width: 100,
+        height: 100,
+        drawn: true,
+      })
+      .mockReturnValue({
+        width: 0,
+        height: 0,
+        drawn: false,
+      });
+    Object.defineProperty(video, "readyState", { value: 4 });
+    Object.defineProperty(video, "paused", { value: false });
+    Object.defineProperty(video, "ended", { value: false });
+
+    renderLoop.start(video, canvas);
+
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(canvas.style.display).toBe("block");
     expect(video.style.opacity).toBe("0");
@@ -111,7 +168,11 @@ describe("RenderLoop", () => {
 
   it("does not rewrite visibility styles after the overlay is already visible", async () => {
     UIState.filterEnabled = true;
-    (renderer.renderFrame as any).mockReturnValue({ width: 100, height: 100 });
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 100,
+      height: 100,
+      drawn: true,
+    });
     Object.defineProperty(video, "readyState", { value: 4 });
     Object.defineProperty(video, "paused", { value: false });
     Object.defineProperty(video, "ended", { value: false });
@@ -135,9 +196,13 @@ describe("RenderLoop", () => {
 
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    expect(displaySetter).toHaveBeenCalledTimes(1);
+    expect(displaySetter).toHaveBeenCalledTimes(2);
+    expect(displaySetter).toHaveBeenNthCalledWith(1, "none");
+    expect(displaySetter).toHaveBeenNthCalledWith(2, "block");
     expect(displaySetter).toHaveBeenCalledWith("block");
-    expect(opacitySetter).toHaveBeenCalledTimes(1);
+    expect(opacitySetter).toHaveBeenCalledTimes(2);
+    expect(opacitySetter).toHaveBeenNthCalledWith(1, "1");
+    expect(opacitySetter).toHaveBeenNthCalledWith(2, "0");
     expect(opacitySetter).toHaveBeenCalledWith("0");
 
     renderLoop.stop();
@@ -175,7 +240,11 @@ describe("RenderLoop", () => {
 
   it("does not create the AI worker before the first valid rendered frame", async () => {
     UIState.filterEnabled = true;
-    (renderer.renderFrame as any).mockReturnValue({ width: 0, height: 0 });
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 0,
+      height: 0,
+      drawn: false,
+    });
     Object.defineProperty(video, "readyState", { value: 4 });
     Object.defineProperty(video, "paused", { value: false });
     Object.defineProperty(video, "ended", { value: false });
@@ -191,7 +260,11 @@ describe("RenderLoop", () => {
 
   it("terminates the AI worker on stop after a valid rendered frame warms it", async () => {
     UIState.filterEnabled = true;
-    (renderer.renderFrame as any).mockReturnValue({ width: 100, height: 100 });
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 100,
+      height: 100,
+      drawn: true,
+    });
     Object.defineProperty(video, "readyState", { value: 4 });
     Object.defineProperty(video, "paused", { value: false });
     Object.defineProperty(video, "ended", { value: false });
@@ -210,6 +283,11 @@ describe("RenderLoop", () => {
 
   it("uses requestVideoFrameCallback when available", async () => {
     UIState.filterEnabled = true;
+    (renderer.renderFrame as any).mockReturnValue({
+      width: 100,
+      height: 100,
+      drawn: true,
+    });
     Object.defineProperty(video, "readyState", { value: 4 });
     Object.defineProperty(video, "paused", { value: false });
     Object.defineProperty(video, "ended", { value: false });

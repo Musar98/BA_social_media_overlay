@@ -44,7 +44,7 @@ function createMockGl() {
     getAttribLocation: vi.fn(() => 0),
     enableVertexAttribArray: vi.fn(),
     vertexAttribPointer: vi.fn(),
-    getUniformLocation: vi.fn(() => ({})),
+    getUniformLocation: vi.fn((_program, name) => name),
     createTexture: vi.fn(() => ({})),
     activeTexture: vi.fn(),
     bindTexture: vi.fn(),
@@ -88,7 +88,7 @@ describe("ImageTransformRenderer", () => {
     expect(gl.drawArrays).toHaveBeenCalled();
   });
 
-  it("still clears when the video source is not renderable", () => {
+  it("does not clear when the video source is not renderable", () => {
     const gl = createMockGl();
     const canvas = document.createElement("canvas");
     canvas.getContext = vi.fn(() => gl as any);
@@ -98,7 +98,113 @@ describe("ImageTransformRenderer", () => {
 
     renderer.renderFrame(source, {});
 
-    expect(gl.clear).toHaveBeenCalledWith(gl.COLOR_BUFFER_BIT);
+    expect(gl.clear).not.toHaveBeenCalled();
     expect(gl.drawArrays).not.toHaveBeenCalled();
+  });
+
+  it("uses contain mapping for landscape sources in a portrait canvas", () => {
+    const gl = createMockGl();
+    const canvas = document.createElement("canvas");
+    canvas.getContext = vi.fn(() => gl as any);
+
+    const renderer = new ImageTransformRenderer(canvas, "vertex", "fragment");
+    const source = document.createElement("canvas");
+    source.width = 1920;
+    source.height = 1080;
+    source.getBoundingClientRect = vi.fn(() => ({
+      width: 360,
+      height: 640,
+      top: 0,
+      left: 0,
+      right: 360,
+      bottom: 640,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }));
+
+    renderer.renderFrame(source, {});
+
+    expect(gl.uniform1i).toHaveBeenCalledWith("u_fitMode", 1);
+  });
+
+  it("uses cover mapping for portrait sources in a portrait canvas", () => {
+    const gl = createMockGl();
+    const canvas = document.createElement("canvas");
+    canvas.getContext = vi.fn(() => gl as any);
+
+    const renderer = new ImageTransformRenderer(canvas, "vertex", "fragment");
+    const source = document.createElement("canvas");
+    source.width = 720;
+    source.height = 1280;
+    source.getBoundingClientRect = vi.fn(() => ({
+      width: 360,
+      height: 640,
+      top: 0,
+      left: 0,
+      right: 360,
+      bottom: 640,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }));
+
+    renderer.renderFrame(source, {});
+
+    expect(gl.uniform1i).toHaveBeenCalledWith("u_fitMode", 0);
+  });
+
+  it("respects explicit object-fit cover", () => {
+    const gl = createMockGl();
+    const canvas = document.createElement("canvas");
+    canvas.getContext = vi.fn(() => gl as any);
+
+    const renderer = new ImageTransformRenderer(canvas, "vertex", "fragment");
+    const source = document.createElement("canvas");
+    source.width = 1920;
+    source.height = 1080;
+    source.style.objectFit = "cover";
+    source.getBoundingClientRect = vi.fn(() => ({
+      width: 360,
+      height: 640,
+      top: 0,
+      left: 0,
+      right: 360,
+      bottom: 640,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }));
+
+    renderer.renderFrame(source, {});
+
+    expect(gl.uniform1i).toHaveBeenCalledWith("u_fitMode", 0);
+  });
+
+  it("respects explicit object-fit contain", () => {
+    const gl = createMockGl();
+    const canvas = document.createElement("canvas");
+    canvas.getContext = vi.fn(() => gl as any);
+
+    const renderer = new ImageTransformRenderer(canvas, "vertex", "fragment");
+    const source = document.createElement("canvas");
+    source.width = 720;
+    source.height = 1280;
+    source.style.objectFit = "contain";
+    source.getBoundingClientRect = vi.fn(() => ({
+      width: 360,
+      height: 640,
+      top: 0,
+      left: 0,
+      right: 360,
+      bottom: 640,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }));
+
+    renderer.renderFrame(source, {});
+
+    expect(gl.uniform1i).toHaveBeenCalledWith("u_fitMode", 1);
   });
 });

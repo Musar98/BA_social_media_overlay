@@ -114,6 +114,7 @@ class RenderLoop {
     let validFrameCount = 0;
 
     let canvasVisible: boolean | null = null;
+    let hasRevealedOverlay = false;
     let containsCheckFrame = 0;
 
     const scheduleWorkerWarmup = () => {
@@ -194,7 +195,7 @@ class RenderLoop {
 
     let lastFilterEnabled = UIState.filterEnabled;
     const updateVisibility = (enabled: boolean) => {
-      const shouldShowCanvas = enabled;
+      const shouldShowCanvas = enabled && hasRevealedOverlay;
 
       if (canvasVisible === shouldShowCanvas) {
         return;
@@ -237,7 +238,12 @@ class RenderLoop {
         if (!video.paused && !video.ended) {
           const renderResult = renderer.renderFrame(video, AIState.params);
 
-          if (renderResult?.width && renderResult.height) {
+          if (renderResult?.drawn) {
+            if (!hasRevealedOverlay) {
+              hasRevealedOverlay = true;
+              updateVisibility(lastFilterEnabled);
+            }
+
             validFrameCount += 1;
             scheduleWorkerWarmup();
 

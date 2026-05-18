@@ -46,6 +46,19 @@ type NormalizedTransformParams = {
   colorCurve: Float32Array;
 };
 
+export type SourceFitMode = "cover" | "contain";
+
+export interface RenderFrameOptions {
+  fitMode?: SourceFitMode;
+}
+
+export interface RenderFrameResult {
+  width: number;
+  height: number;
+  drawn: boolean;
+  fitMode?: SourceFitMode;
+}
+
 export class ImageTransformRenderer {
   public readonly canvas: HTMLCanvasElement;
   private readonly gl: WebGL2RenderingContext;
@@ -310,6 +323,7 @@ export class ImageTransformRenderer {
       texelSize: this.gl.getUniformLocation(this.program, "u_texelSize"),
       canvasSize: this.gl.getUniformLocation(this.program, "u_canvasSize"),
       imageSize: this.gl.getUniformLocation(this.program, "u_imageSize"),
+      fitMode: this.gl.getUniformLocation(this.program, "u_fitMode"),
       sharp: this.gl.getUniformLocation(this.program, "u_sharp"),
       exposure: this.gl.getUniformLocation(this.program, "u_exposure"),
       contrast: this.gl.getUniformLocation(this.program, "u_contrast"),
@@ -851,10 +865,42 @@ export class ImageTransformRenderer {
     return current;
   }
 
+  private static resolveFitMode(
+    source: TexImageSource,
+    sourceWidth: number,
+    sourceHeight: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    requestedFitMode?: SourceFitMode,
+  ): SourceFitMode {
+    if (requestedFitMode) {
+      return requestedFitMode;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      "getComputedStyle" in window &&
+      typeof Element !== "undefined" &&
+      source instanceof Element
+    ) {
+      const objectFit = window.getComputedStyle(source).objectFit;
+
+      if (objectFit === "contain" || objectFit === "cover") {
+        return objectFit;
+      }
+    }
+
+    const sourceAspect = sourceWidth / sourceHeight;
+    const canvasAspect = canvasWidth / canvasHeight;
+
+    return sourceAspect > canvasAspect ? "contain" : "cover";
+  }
+
   private applyUniforms(
     sourceWidth: number,
     sourceHeight: number,
     params: NormalizedTransformParams,
+    fitMode: SourceFitMode,
   ): void {
     const { uniforms, gl, canvas } = this;
 
@@ -868,6 +914,10 @@ export class ImageTransformRenderer {
 
     if (uniforms.imageSize) {
       gl.uniform2f(uniforms.imageSize, sourceWidth, sourceHeight);
+    }
+
+    if (uniforms.fitMode) {
+      gl.uniform1i(uniforms.fitMode, fitMode === "contain" ? 1 : 0);
     }
 
     if (uniforms.sharp) {
@@ -894,12 +944,12 @@ export class ImageTransformRenderer {
   renderFrame(
     source: TexImageSource,
     params: any,
-  ): { width: number; height: number } {
+    options?: RenderFrameOptions,
+  ): RenderFrameResult {
     this.pollCompletedGpuMetrics();
 
     if (!ImageTransformRenderer.isRenderableSourceReady(source)) {
-      this.clearCanvas();
-      return { width: 0, height: 0 };
+      return { width: 0, height: 0, drawn: false };
     }
 
     const frameId = ++this.frameCounter;
@@ -921,6 +971,15 @@ export class ImageTransformRenderer {
     if (this.canvas.width !== canvasWidth) this.canvas.width = canvasWidth;
     if (this.canvas.height !== canvasHeight) this.canvas.height = canvasHeight;
 
+    const fitMode = ImageTransformRenderer.resolveFitMode(
+      source,
+      sourceWidth,
+      sourceHeight,
+      canvasWidth,
+      canvasHeight,
+      options?.fitMode,
+    );
+
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
     this.uploadSourceToTexture(source, sourceWidth, sourceHeight);
@@ -928,7 +987,7 @@ export class ImageTransformRenderer {
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
 
-    this.applyUniforms(sourceWidth, sourceHeight, smoothedParams);
+    this.applyUniforms(sourceWidth, sourceHeight, smoothedParams, fitMode);
 
     const drawStartMs = ImageTransformRenderer.nowMs();
     const gpuQueryState = this.beginGpuTimerQuery();
@@ -951,7 +1010,7 @@ export class ImageTransformRenderer {
       drawEndMs,
     );
 
-    return { width: sourceWidth, height: sourceHeight };
+    return { width: sourceWidth, height: sourceHeight, drawn: true, fitMode };
   }
 
   getMetrics(): {
