@@ -1,27 +1,16 @@
 import { onnxRuntime } from "../ai/ONNXRuntime";
 import { runPrediction } from "../ai/AIPredictor";
+import { overlayLogger } from "../diagnostics/logger";
 
 class PredictionTask {
   private canvas: OffscreenCanvas | null = null;
   private ctx: OffscreenCanvasRenderingContext2D | null = null;
 
-  async warmup(): Promise<void> {
-    console.info("Starting AI Worker warmup...");
-    try {
-      await onnxRuntime.init();
-
-      // Run a dummy prediction with a small black image to JIT and load weights
-      const dummySize = 224;
-      const dummyData = new Uint8ClampedArray(dummySize * dummySize * 4);
-      await runPrediction(dummyData, dummySize, dummySize);
-
-      console.info("AI Worker warmup complete.");
-    } catch (err) {
-      console.error("AI Worker warmup failed:", err);
-    }
+  async initialize(): Promise<void> {
+    await onnxRuntime.init();
   }
 
-  async run(bitmap: ImageBitmap): Promise<void> {
+  async run(bitmap: ImageBitmap, generation?: number): Promise<void> {
     const t0 = performance.now();
 
     try {
@@ -60,18 +49,18 @@ class PredictionTask {
       const tInference = performance.now();
 
       // timing log for performance measurment
-      console.info("AI timing", JSON.stringify({
+      overlayLogger.verbose("ai-timing", {
         init: tInit - t0,
         draw: tDraw - tInit,
         readPixels: tRead - tDraw,
         inference: tInference - tRead,
         total: tInference - t0,
-      }));
+      });
 
-      self.postMessage({ aiParams });
+      self.postMessage({ type: "prediction", aiParams, generation });
     } catch (err) {
       console.error("Worker error:", err);
-      self.postMessage({ error: String(err) });
+      self.postMessage({ type: "error", error: String(err), generation });
     } finally {
       bitmap.close();
     }

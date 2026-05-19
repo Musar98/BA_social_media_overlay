@@ -1,14 +1,27 @@
-import { ImageTransformRenderer } from "../transformation/transformations";
+import {
+  ImageTransformRenderer,
+  type RenderFrameOptions,
+  type RenderFrameResult,
+} from "../transformation/transformations";
 import { CLIP_TO_UV } from "../transformation/ClipToUv";
 import { IMAGE_ADJUSTMENTS_PIPELINE } from "../transformation/ImageAdjustmentsPipeline";
+import { overlayLogger } from "../diagnostics/logger";
 
 class Renderer {
   private instance: ImageTransformRenderer | null = null;
+  private createCount = 0;
+  private destroyCount = 0;
+  private clearSourceCount = 0;
 
   init(canvas: HTMLCanvasElement): void {
     if (this.instance) {
       this.destroy();
     }
+
+    this.createCount += 1;
+    overlayLogger.info("renderer-created", {
+      createCount: this.createCount,
+    });
 
     this.instance = new ImageTransformRenderer(
       canvas,
@@ -18,12 +31,37 @@ class Renderer {
     );
   }
 
-  renderFrame(source: TexImageSource, params: any): void {
-    this.instance?.renderFrame(source, params);
+  renderFrame(
+    source: TexImageSource,
+    params: any,
+    options?: RenderFrameOptions,
+  ): RenderFrameResult | null {
+    return this.instance?.renderFrame(source, params, options) ?? null;
+  }
+
+  clearSourceTexture(): void {
+    if (!this.instance) return;
+
+    this.clearSourceCount += 1;
+    overlayLogger.info("renderer-source-texture-cleared", {
+      clearSourceCount: this.clearSourceCount,
+    });
+
+    this.instance.clearSourceTexture();
+  }
+
+  resetSmoothing(): void {
+    this.instance?.resetSmoothing();
   }
 
   destroy(): void {
     if (!this.instance) return;
+
+    this.destroyCount += 1;
+    overlayLogger.info("renderer-destroyed", {
+      destroyCount: this.destroyCount,
+    });
+
     this.instance.destroy();
     this.instance = null;
   }

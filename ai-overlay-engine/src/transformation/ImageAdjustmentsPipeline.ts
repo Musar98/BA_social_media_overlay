@@ -1,5 +1,6 @@
 export const IMAGE_ADJUSTMENTS_PIPELINE = `#version 300 es
 precision highp float;
+precision highp int;
 
 // Interpolated UV coordinates from the vertex shader.
 in vec2 v_uv;
@@ -18,6 +19,9 @@ uniform vec2 u_canvasSize;
 
 // Size of the source image in pixels.
 uniform vec2 u_imageSize;
+
+// 0 = cover, 1 = contain.
+uniform int u_fitMode;
 
 // User-controlled adjustment parameters.
 uniform float u_sharp;       // Edge-based sharpening strength
@@ -132,21 +136,39 @@ bool mapCanvasUVToImageUV(vec2 canvasUV, out vec2 imageUV) {
     float canvasAspect = u_canvasSize.x / u_canvasSize.y;
     float imageAspect = u_imageSize.x / u_imageSize.y;
 
+    if(u_fitMode == 1) {
+        vec2 fitSize = vec2(1.0f);
+
+        if(imageAspect > canvasAspect) {
+            fitSize.y = canvasAspect / imageAspect;
+        } else {
+            fitSize.x = imageAspect / canvasAspect;
+        }
+
+        vec2 fitMin = (vec2(1.0f) - fitSize) * 0.5f;
+        vec2 fitMax = fitMin + fitSize;
+
+        if(
+            canvasUV.x < fitMin.x || canvasUV.x > fitMax.x ||
+            canvasUV.y < fitMin.y || canvasUV.y > fitMax.y
+        ) {
+            imageUV = vec2(0.5f);
+            return false;
+        }
+
+        imageUV = (canvasUV - fitMin) / fitSize;
+        return true;
+    }
+
     vec2 scale = vec2(1.0f);
 
     if(imageAspect > canvasAspect) {
-        scale.y = canvasAspect / imageAspect;
+        scale.x = canvasAspect / imageAspect;
     } else {
-        scale.x = imageAspect / canvasAspect;
+        scale.y = imageAspect / canvasAspect;
     }
 
-    vec2 uv = (canvasUV - 0.5f) / scale + 0.5f;
-
-    if(uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) {
-        return false;
-    }
-
-    imageUV = uv;
+    imageUV = (canvasUV - 0.5f) * scale + 0.5f;
     return true;
 }
 

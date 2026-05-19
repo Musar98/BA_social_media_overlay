@@ -3,6 +3,8 @@ import {
   MAX_PENDING_GPU_QUERIES,
   TONE_CURVE_STEPS,
 } from "./Constants";
+import { SourceCanvasDimensionCache } from "../renderer/canvasDimensions";
+import { SHARPEN_ENABLED } from "./FeatureFlags";
 
 const DEFAULT_SMOOTHING_ENABLED = true;
 const DEFAULT_SMOOTHING_STIFFNESS = 0.05;
@@ -44,6 +46,19 @@ type NormalizedTransformParams = {
   colorCurve: Float32Array;
 };
 
+export type SourceFitMode = "cover" | "contain";
+
+export interface RenderFrameOptions {
+  fitMode?: SourceFitMode;
+}
+
+export interface RenderFrameResult {
+  width: number;
+  height: number;
+  drawn: boolean;
+  fitMode?: SourceFitMode;
+}
+
 export class ImageTransformRenderer {
   public readonly canvas: HTMLCanvasElement;
   private readonly gl: WebGL2RenderingContext;
@@ -53,6 +68,9 @@ export class ImageTransformRenderer {
   private readonly vertexCount: number;
   private readonly uniforms: Record<string, WebGLUniformLocation | null>;
   private readonly texture: WebGLTexture;
+  private textureWidth = 0;
+  private textureHeight = 0;
+  private readonly canvasDimensions = new SourceCanvasDimensionCache();
 
   private readonly metricsEnabled: boolean;
   private readonly metricsCallback: ((m: ImageTransformMetrics) => void) | null;
@@ -305,6 +323,7 @@ export class ImageTransformRenderer {
       texelSize: this.gl.getUniformLocation(this.program, "u_texelSize"),
       canvasSize: this.gl.getUniformLocation(this.program, "u_canvasSize"),
       imageSize: this.gl.getUniformLocation(this.program, "u_imageSize"),
+      fitMode: this.gl.getUniformLocation(this.program, "u_fitMode"),
       sharp: this.gl.getUniformLocation(this.program, "u_sharp"),
       exposure: this.gl.getUniformLocation(this.program, "u_exposure"),
       contrast: this.gl.getUniformLocation(this.program, "u_contrast"),
@@ -579,15 +598,44 @@ export class ImageTransformRenderer {
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 
-  private uploadSourceToTexture(source: TexImageSource): void {
+  private allocateSourceTexture(width: number, height: number): void {
     this.gl.activeTexture(this.gl.TEXTURE0);
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
-    this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, false);
 
     this.gl.texImage2D(
       this.gl.TEXTURE_2D,
       0,
       this.gl.RGBA,
+      width,
+      height,
+      0,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      null,
+    );
+
+    this.textureWidth = width;
+    this.textureHeight = height;
+  }
+
+  private uploadSourceToTexture(
+    source: TexImageSource,
+    width: number,
+    height: number,
+  ): void {
+    this.gl.activeTexture(this.gl.TEXTURE0);
+    this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+    this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, false);
+
+    if (this.textureWidth !== width || this.textureHeight !== height) {
+      this.allocateSourceTexture(width, height);
+    }
+
+    this.gl.texSubImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      0,
+      0,
       this.gl.RGBA,
       this.gl.UNSIGNED_BYTE,
       source,
@@ -817,10 +865,42 @@ export class ImageTransformRenderer {
     return current;
   }
 
+  private static resolveFitMode(
+    source: TexImageSource,
+    sourceWidth: number,
+    sourceHeight: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    requestedFitMode?: SourceFitMode,
+  ): SourceFitMode {
+    if (requestedFitMode) {
+      return requestedFitMode;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      "getComputedStyle" in window &&
+      typeof Element !== "undefined" &&
+      source instanceof Element
+    ) {
+      const objectFit = window.getComputedStyle(source).objectFit;
+
+      if (objectFit === "contain" || objectFit === "cover") {
+        return objectFit;
+      }
+    }
+
+    const sourceAspect = sourceWidth / sourceHeight;
+    const canvasAspect = canvasWidth / canvasHeight;
+
+    return sourceAspect > canvasAspect ? "contain" : "cover";
+  }
+
   private applyUniforms(
     sourceWidth: number,
     sourceHeight: number,
     params: NormalizedTransformParams,
+    fitMode: SourceFitMode,
   ): void {
     const { uniforms, gl, canvas } = this;
 
@@ -836,7 +916,13 @@ export class ImageTransformRenderer {
       gl.uniform2f(uniforms.imageSize, sourceWidth, sourceHeight);
     }
 
-    if (uniforms.sharp) gl.uniform1f(uniforms.sharp, params.sharp);
+    if (uniforms.fitMode) {
+      gl.uniform1i(uniforms.fitMode, fitMode === "contain" ? 1 : 0);
+    }
+
+    if (uniforms.sharp) {
+      gl.uniform1f(uniforms.sharp, SHARPEN_ENABLED ? params.sharp : 0);
+    }
     if (uniforms.exposure) gl.uniform1f(uniforms.exposure, params.exposure);
     if (uniforms.contrast) gl.uniform1f(uniforms.contrast, params.contrast);
     if (uniforms.saturation) {
@@ -858,12 +944,12 @@ export class ImageTransformRenderer {
   renderFrame(
     source: TexImageSource,
     params: any,
-  ): { width: number; height: number } {
+    options?: RenderFrameOptions,
+  ): RenderFrameResult {
     this.pollCompletedGpuMetrics();
 
     if (!ImageTransformRenderer.isRenderableSourceReady(source)) {
-      this.clearCanvas();
-      return { width: 0, height: 0 };
+      return { width: 0, height: 0, drawn: false };
     }
 
     const frameId = ++this.frameCounter;
@@ -871,6 +957,8 @@ export class ImageTransformRenderer {
 
     const { width: sourceWidth, height: sourceHeight } =
       ImageTransformRenderer.getSourceDimensions(source);
+    const { width: canvasWidth, height: canvasHeight } =
+      this.canvasDimensions.get(source, sourceWidth, sourceHeight);
 
     const targetParams = this.normalizeParams(
       params,
@@ -880,18 +968,26 @@ export class ImageTransformRenderer {
 
     const smoothedParams = this.getSmoothedParams(targetParams);
 
-    if (this.canvas.width !== sourceWidth) this.canvas.width = sourceWidth;
-    if (this.canvas.height !== sourceHeight) this.canvas.height = sourceHeight;
+    if (this.canvas.width !== canvasWidth) this.canvas.width = canvasWidth;
+    if (this.canvas.height !== canvasHeight) this.canvas.height = canvasHeight;
+
+    const fitMode = ImageTransformRenderer.resolveFitMode(
+      source,
+      sourceWidth,
+      sourceHeight,
+      canvasWidth,
+      canvasHeight,
+      options?.fitMode,
+    );
 
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
-    this.clearCanvas();
-    this.uploadSourceToTexture(source);
+    this.uploadSourceToTexture(source, sourceWidth, sourceHeight);
 
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
 
-    this.applyUniforms(sourceWidth, sourceHeight, smoothedParams);
+    this.applyUniforms(sourceWidth, sourceHeight, smoothedParams, fitMode);
 
     const drawStartMs = ImageTransformRenderer.nowMs();
     const gpuQueryState = this.beginGpuTimerQuery();
@@ -904,8 +1000,6 @@ export class ImageTransformRenderer {
       frameId,
     );
 
-    this.gl.flush();
-
     const drawEndMs = ImageTransformRenderer.nowMs();
 
     this.recordCpuMetrics(
@@ -916,7 +1010,7 @@ export class ImageTransformRenderer {
       drawEndMs,
     );
 
-    return { width: sourceWidth, height: sourceHeight };
+    return { width: sourceWidth, height: sourceHeight, drawn: true, fitMode };
   }
 
   getMetrics(): {
@@ -942,7 +1036,31 @@ export class ImageTransformRenderer {
     this.velocityParams = null;
   }
 
+  clearSourceTexture(): void {
+    this.gl.activeTexture(this.gl.TEXTURE0);
+    this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+
+    const clearPixel = new Uint8Array([0, 0, 0, 255]);
+
+    this.gl.texImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      this.gl.RGBA,
+      1,
+      1,
+      0,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      clearPixel,
+    );
+
+    this.textureWidth = 1;
+    this.textureHeight = 1;
+  }
+
   destroy(): void {
+    this.clearSourceTexture();
+
     for (let i = 0; i < this.pendingGpuQueries.length; i++) {
       this.gl.deleteQuery(this.pendingGpuQueries[i].query);
     }
@@ -953,6 +1071,10 @@ export class ImageTransformRenderer {
     this.gl.deleteBuffer(this.vbo);
     this.gl.deleteVertexArray(this.vao);
     this.gl.deleteProgram(this.program);
+    this.canvasDimensions.dispose();
+
+    this.canvas.width = 1;
+    this.canvas.height = 1;
 
     const ext = this.gl.getExtension("WEBGL_lose_context");
     ext?.loseContext();
