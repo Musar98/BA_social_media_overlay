@@ -24,6 +24,7 @@ describe("VideoModifier", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = "";
+    window.history.replaceState(null, "", "/");
     video = document.createElement("video");
     video.load = vi.fn();
     video.pause = vi.fn();
@@ -90,6 +91,43 @@ describe("VideoModifier", () => {
     expect(firstCanvas.height).toBe(1);
     expect(firstRemove).toHaveBeenCalled();
     expect(renderLoop.start).toHaveBeenLastCalledWith(secondVideo, secondCanvas);
+  });
+
+  it("normalizes and restores active reels layout", async () => {
+    window.history.replaceState(null, "", "/reels/");
+    document.body.innerHTML = "";
+
+    const main = document.createElement("main");
+    const shell = document.createElement("div");
+    const media = document.createElement("div");
+    const canvas = document.createElement("canvas");
+
+    media.style.height = "640px";
+    media.style.overflow = "visible";
+    video.style.height = "640px";
+    video.style.objectFit = "contain";
+
+    document.body.appendChild(main);
+    main.appendChild(shell);
+    shell.appendChild(media);
+    media.appendChild(video);
+    vi.mocked(overlayCanvasFactory.create).mockReturnValueOnce(canvas);
+
+    await videoModifier.modify(video);
+
+    expect(media.style.height).toBe("100vh");
+    expect(media.style.overflow).toBe("hidden");
+    expect(video.style.height).toBe("100%");
+    expect(video.style.objectFit).toBe("cover");
+    expect(canvas.style.position).toBe("absolute");
+    expect(canvas.style.height).toBe("100%");
+
+    videoModifier.cleanup();
+
+    expect(media.style.height).toBe("640px");
+    expect(media.style.overflow).toBe("visible");
+    expect(video.style.height).toBe("640px");
+    expect(video.style.objectFit).toBe("contain");
   });
 
   it("soft-retires the previous active video when a new video becomes active", async () => {
