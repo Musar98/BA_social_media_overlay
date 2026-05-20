@@ -26,7 +26,7 @@ class VideoResourceManager {
   private readonly retainedAttachedVideoLimit = 3;
 
   enforceSingleActiveVideo(activeVideo: HTMLVideoElement | null): void {
-    if (!activeVideo) {
+    if (!activeVideo || activeVideo === this.activeVideo) {
       return;
     }
 

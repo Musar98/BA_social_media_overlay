@@ -34,8 +34,6 @@ class VideoObserver {
           this.observeVideosInNode(node);
         });
 
-        videoResourceManager.enforceSingleActiveVideo(this.activeVideo);
-
         m.removedNodes.forEach((node) => {
           this.unobserveVideosInNode(node);
         });
