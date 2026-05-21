@@ -1,11 +1,13 @@
 package com.example.ba_social_media_overlay.webview
 
+import android.os.Build
 import android.util.Log
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.annotation.RequiresApi
 import com.example.ba_social_media_overlay.assets.AiOverlayInjector
 import com.example.ba_social_media_overlay.assets.AssetRouting
 
@@ -47,6 +49,7 @@ object WebViewClientFactory {
                 }
             }
 
+            @RequiresApi(Build.VERSION_CODES.O)
             override fun onRenderProcessGone(
                 view: WebView,
                 detail: RenderProcessGoneDetail
