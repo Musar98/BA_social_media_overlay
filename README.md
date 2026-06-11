@@ -1,13 +1,14 @@
 # 📱 Instagram Video Overlay – through Learned Parametric Emotion Editing of Images
 
-This project injects a custom AI-powered overlay engine into Instagram using an Android `WebView`. 
+This project injects a custom AI-powered overlay engine into Instagram using an Android `WebView`.
+It is the codebase of the bachelor thesis **Learned Parametric Emotion Editing of Images**.
 
-It consists of three main parts:
+It consists of four main parts:
 
 1. **Android host app (Kotlin / Jetpack Compose)**
 2. **AI Overlay Engine (TypeScript + Vite)** (ai-overlay-engine/README.md)
 3. **AI Worker (Typescript + Vite)** (inside ai-overlay-engine)
-
+4. **Training and evaluation code** (python/readme.md)
 ---
 
 ## 🧠 Overview

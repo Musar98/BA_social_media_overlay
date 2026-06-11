@@ -14,7 +14,7 @@ performs the following:
    *ONNX Runtime Web**.
 3. **Transformation**: Generates dynamic parameters (sharpness, exposure, tone curves, etc.) and
    applies them to a
-   canvas overlay using a custom WebGL/Canvas pipeline.
+   canvas overlay using a custom WebGL/Canvas pipeline. The the CLIP shader is found in `src/transformation/ClipToUv.ts` and the fragment shader in `src/transformation/ImageAdjustmentsPipeline.ts`. A more detailed description can be found under `src/transformation/shader.md`
 
 ## Tech Stack
 
@@ -22,6 +22,8 @@ performs the following:
 * **Vite**: Used for bundling.
 * **ONNX Runtime Web**: For client-side inference using WebAssembly (WASM).
 * **NPM**: For dependency management and scripts.
+
+For more information see `package.json`and `package-lock.json`.
 
 # Android app integration
 
